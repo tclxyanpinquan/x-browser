@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>x-browser - macOS App 原型</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    /* macOS 系统字体栈 */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    }
+    /* macOS 滚动条 */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+    /* 窗口拖拽区域 */
+    .titlebar { -webkit-app-region: drag; }
+    .titlebar button { -webkit-app-region: no-drag; }
+    /* macOS 侧边栏选中态 */
+    .sidebar-item.active {
+      background: linear-gradient(180deg, rgba(59,130,246,0.9) 0%, rgba(37,99,235,0.9) 100%);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    /* 红绿灯按钮 */
+    .traffic-light {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+    .traffic-close { background: #FF5F57; }
+    .traffic-min { background: #FEBC2E; }
+    .traffic-max { background: #28C840; }
+    /* macOS 卡片风格 */
+    .mac-card {
+      background: rgba(40, 40, 44, 0.6);
+      backdrop-filter: blur(20px);
+      border: 0.5px solid rgba(255,255,255,0.08);
+    }
+    .mac-card:hover {
+      background: rgba(50, 50, 54, 0.7);
+      border-color: rgba(255,255,255,0.12);
+    }
+    /* macOS 按钮 */
+    .mac-btn-primary {
+      background: linear-gradient(180deg, #3B82F6 0%, #2563EB 100%);
+      border: 0.5px solid rgba(255,255,255,0.15);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    .mac-btn-primary:hover {
+      background: linear-gradient(180deg, #4B8FF7 0%, #3570EC 100%);
+    }
+    .mac-btn-secondary {
+      background: rgba(255,255,255,0.08);
+      border: 0.5px solid rgba(255,255,255,0.1);
+    }
+    .mac-btn-secondary:hover {
+      background: rgba(255,255,255,0.12);
+    }
+    /* macOS 搜索框 */
+    .mac-search {
+      background: rgba(255,255,255,0.06);
+      border: 0.5px solid rgba(255,255,255,0.08);
+    }
+    .mac-search:focus-within {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(59,130,246,0.5);
+    }
+    /* macOS 表格行 */
+    .mac-table-row:hover {
+      background: rgba(59,130,246,0.1);
+    }
+    /* macOS 侧边栏 */
+    .sidebar-bg {
+      background: rgba(30, 30, 34, 0.85);
+      backdrop-filter: blur(30px);
+      border-right: 0.5px solid rgba(255,255,255,0.06);
+    }
+  </style>
+</head>
+<body class="bg-[#1E1E22] text-[#E4E4E7] overflow-hidden h-screen select-none">
+
+  <!-- macOS 标题栏 -->
+  <div class="titlebar h-[38px] bg-[#2D2D32] border-b border-white/5 flex items-center px-4 shrink-0">
+    <!-- 红绿灯 -->
+    <div class="flex items-center gap-2 mr-4">
+      <div class="traffic-light traffic-close flex items-center justify-center opacity-80 hover:opacity-100 cursor-pointer">
+        <svg class="w-2.5 h-2.5 text-[#4D0000] opacity-0 hover:opacity-100" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <div class="traffic-light traffic-min flex items-center justify-center opacity-80 hover:opacity-100 cursor-pointer">
+        <svg class="w-2.5 h-2.5 text-[#995700] opacity-0 hover:opacity-100" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <div class="traffic-light traffic-max flex items-center justify-center opacity-80 hover:opacity-100 cursor-pointer">
+        <svg class="w-2.5 h-2.5 text-[#006500] opacity-0 hover:opacity-100" viewBox="0 0 12 12"><path d="M5 2v4H1M7 10V6h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+    <!-- 窗口标题 -->
+    <div class="flex-1 text-center text-xs text-gray-400 font-medium pr-[68px]">x-browser</div>
+  </div>
+
+  <!-- 主体区域 -->
+  <div class="flex h-[calc(100vh-38px)]">
+
+    <!-- 侧边栏 -->
+    <aside class="sidebar-bg w-[220px] flex flex-col py-3 shrink-0">
+      <!-- 顶部工具按钮 -->
+      <div class="px-3 mb-2">
+        <button class="w-full mac-btn-primary text-white text-xs font-medium py-1.5 rounded-md flex items-center justify-center gap-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          新建 Profile
+        </button>
+      </div>
+
+      <div class="px-3 mb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">导航</div>
+
+      <nav class="px-2 space-y-0.5 flex-1">
+        <button onclick="showPage('profiles')" data-page="profiles" class="sidebar-item active w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-white transition-all">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+          Profile 管理
+        </button>
+        <button onclick="showPage('sessions')" data-page="sessions" class="sidebar-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-all">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          浏览器会话
+          <span class="ml-auto text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">2</span>
+        </button>
+        <button onclick="showPage('tasks')" data-page="tasks" class="sidebar-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-all">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          任务中心
+        </button>
+        <button onclick="showPage('results')" data-page="results" class="sidebar-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-all">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+          数据结果
+        </button>
+
+        <div class="mt-4 px-3 mb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">系统</div>
+
+        <button onclick="showPage('settings')" data-page="settings" class="sidebar-item w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-all">
+          <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          设置
+        </button>
+      </nav>
+
+      <!-- 底部状态 -->
+      <div class="px-3 py-2 border-t border-white/5">
+        <div class="flex items-center gap-2 text-[11px] text-gray-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+          后端服务正常
+        </div>
+        <div class="text-[10px] text-gray-600 mt-0.5 ml-3.5">2 个 Profile 运行中</div>
+      </div>
+    </aside>
+
+    <!-- 内容区 -->
+    <main class="flex-1 overflow-hidden flex flex-col bg-[#1E1E22]">
+
+      <!-- Profile 管理页 -->
+      <div id="page-profiles" class="page-content flex-1 overflow-auto">
+        <div class="max-w-4xl mx-auto p-6">
+          <!-- 页面标题 -->
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-semibold">Profile 管理</h2>
+            <div class="mac-search flex items-center gap-2 px-3 py-1.5 rounded-md w-64">
+              <svg class="w-3.5 h-3.5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input type="text" placeholder="搜索 Profile..." class="bg-transparent text-sm outline-none w-full placeholder-gray-500">
+            </div>
+          </div>
+
+          <!-- Profile 卡片列表 -->
+          <div class="space-y-2">
+            <!-- 运行中 -->
+            <div class="mac-card rounded-lg p-4 flex items-center gap-4 group">
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0 shadow-[0_0_6px_rgba(34,197,94,0.5)]"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">抖音主号</span>
+                  <span class="text-[10px] bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded font-medium">运行中</span>
+                </div>
+                <div class="flex items-center gap-4 mt-1 text-[11px] text-gray-500">
+                  <span>socks5://127.0.0.1:7890</span>
+                  <span>2 个插件</span>
+                  <span>PID: 12345</span>
+                  <span>端口: 9222</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button class="mac-btn-secondary text-red-400 px-3 py-1 rounded text-xs">停止</button>
+                <button class="mac-btn-secondary text-gray-400 px-3 py-1 rounded text-xs">重启</button>
+                <button class="mac-btn-secondary text-gray-400 px-2 py-1 rounded text-xs">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 运行中 -->
+            <div class="mac-card rounded-lg p-4 flex items-center gap-4 group">
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0 shadow-[0_0_6px_rgba(34,197,94,0.5)]"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">快手运营号</span>
+                  <span class="text-[10px] bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded font-medium">运行中</span>
+                </div>
+                <div class="flex items-center gap-4 mt-1 text-[11px] text-gray-500">
+                  <span>http://proxy.example.com:8080</span>
+                  <span>1 个插件</span>
+                  <span>PID: 12346</span>
+                  <span>端口: 9223</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button class="mac-btn-secondary text-red-400 px-3 py-1 rounded text-xs">停止</button>
+                <button class="mac-btn-secondary text-gray-400 px-3 py-1 rounded text-xs">重启</button>
+                <button class="mac-btn-secondary text-gray-400 px-2 py-1 rounded text-xs">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- 已停止 -->
+            <div class="mac-card rounded-lg p-4 flex items-center gap-4 group">
+              <div class="w-2.5 h-2.5 rounded-full bg-gray-600 shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">测试账号</span>
+                  <span class="text-[10px] bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded font-medium">已停止</span>
+                </div>
+                <div class="flex items-center gap-4 mt-1 text-[11px] text-gray-500">
+                  <span>无代理</span>
+                  <span>0 个插件</span>
+                  <span>上次启动: 3 天前</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button class="mac-btn-secondary text-green-400 px-3 py-1 rounded text-xs">启动</button>
+                <button class="mac-btn-secondary text-gray-400 px-3 py-1 rounded text-xs">编辑</button>
+                <button class="mac-btn-secondary text-red-400 px-3 py-1 rounded text-xs">删除</button>
+              </div>
+            </div>
+
+            <!-- 异常 -->
+            <div class="mac-card rounded-lg p-4 flex items-center gap-4 group">
+              <div class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">Twitter 采集号</span>
+                  <span class="text-[10px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded font-medium">异常</span>
+                </div>
+                <div class="flex items-center gap-4 mt-1 text-[11px] text-gray-500">
+                  <span>socks5://127.0.0.1:7891</span>
+                  <span>0 个插件</span>
+                  <span>上次启动: 1 周前</span>
+                </div>
+                <div class="text-[11px] text-red-400/80 mt-1">代理连接失败: Connection refused</div>
+              </div>
+              <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button class="mac-btn-secondary text-green-400 px-3 py-1 rounded text-xs">启动</button>
+                <button class="mac-btn-secondary text-gray-400 px-3 py-1 rounded text-xs">编辑</button>
+                <button class="mac-btn-secondary text-red-400 px-3 py-1 rounded text-xs">删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 浏览器会话页 -->
+      <div id="page-sessions" class="page-content flex-1 overflow-auto hidden">
+        <div class="max-w-4xl mx-auto p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-semibold">浏览器会话</h2>
+            <span class="text-xs text-gray-500">运行 <span class="text-green-400">2</span> / 最大 5</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <!-- 会话卡片 1 -->
+            <div class="mac-card rounded-lg overflow-hidden">
+              <div class="p-3 flex items-center justify-between border-b border-white/5">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span class="text-sm font-medium">抖音主号</span>
+                </div>
+                <span class="text-[11px] text-gray-500">15 分钟</span>
+              </div>
+              <div class="h-36 bg-black/40 flex items-center justify-center">
+                <svg class="w-10 h-10 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              </div>
+              <div class="p-3 space-y-1 text-[11px] text-gray-500">
+                <div class="flex justify-between"><span>PID</span><span class="text-gray-400">12345</span></div>
+                <div class="flex justify-between"><span>端口</span><span class="text-gray-400">9222</span></div>
+                <div class="flex justify-between"><span>代理</span><span class="text-gray-400 truncate max-w-[140px]">socks5://127.0.0.1:7890</span></div>
+              </div>
+              <div class="p-3 pt-0 flex gap-2">
+                <button class="flex-1 mac-btn-secondary text-red-400 py-1.5 rounded text-xs">停止</button>
+                <button class="flex-1 mac-btn-secondary text-gray-400 py-1.5 rounded text-xs">截图</button>
+              </div>
+            </div>
+
+            <!-- 会话卡片 2 -->
+            <div class="mac-card rounded-lg overflow-hidden">
+              <div class="p-3 flex items-center justify-between border-b border-white/5">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span class="text-sm font-medium">快手运营号</span>
+                </div>
+                <span class="text-[11px] text-gray-500">8 分钟</span>
+              </div>
+              <div class="h-36 bg-black/40 flex items-center justify-center">
+                <svg class="w-10 h-10 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              </div>
+              <div class="p-3 space-y-1 text-[11px] text-gray-500">
+                <div class="flex justify-between"><span>PID</span><span class="text-gray-400">12346</span></div>
+                <div class="flex justify-between"><span>端口</span><span class="text-gray-400">9223</span></div>
+                <div class="flex justify-between"><span>代理</span><span class="text-gray-400 truncate max-w-[140px]">http://proxy.example.com:8080</span></div>
+              </div>
+              <div class="p-3 pt-0 flex gap-2">
+                <button class="flex-1 mac-btn-secondary text-red-400 py-1.5 rounded text-xs">停止</button>
+                <button class="flex-1 mac-btn-secondary text-gray-400 py-1.5 rounded text-xs">截图</button>
+              </div>
+            </div>
+
+            <!-- 等待中 -->
+            <div class="mac-card rounded-lg overflow-hidden opacity-50">
+              <div class="p-3 flex items-center justify-between border-b border-white/5">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
+                  <span class="text-sm font-medium">测试账号</span>
+                </div>
+                <span class="text-[11px] text-yellow-500">等待中</span>
+              </div>
+              <div class="h-36 bg-black/40 flex items-center justify-center">
+                <svg class="w-10 h-10 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </div>
+              <div class="p-3 space-y-1 text-[11px] text-gray-500">
+                <div class="flex justify-between"><span>队列位置</span><span class="text-yellow-500">1</span></div>
+              </div>
+              <div class="p-3 pt-0 flex gap-2">
+                <button class="flex-1 mac-btn-secondary text-gray-400 py-1.5 rounded text-xs">取消</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 任务中心页 -->
+      <div id="page-tasks" class="page-content flex-1 overflow-auto hidden">
+        <div class="max-w-4xl mx-auto p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-semibold">任务中心</h2>
+            <div class="flex gap-2">
+              <button class="mac-btn-secondary px-3 py-1.5 rounded text-xs text-gray-300">批量执行</button>
+            </div>
+          </div>
+
+          <!-- 任务表格 -->
+          <div class="mac-card rounded-lg overflow-hidden">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b border-white/5 text-gray-500">
+                  <th class="text-left px-4 py-2.5 font-medium w-8"><input type="checkbox" class="rounded bg-transparent border-gray-600"></th>
+                  <th class="text-left px-4 py-2.5 font-medium">任务名称</th>
+                  <th class="text-left px-4 py-2.5 font-medium">站点</th>
+                  <th class="text-left px-4 py-2.5 font-medium">Profile</th>
+                  <th class="text-left px-4 py-2.5 font-medium">状态</th>
+                  <th class="text-left px-4 py-2.5 font-medium">耗时</th>
+                  <th class="text-left px-4 py-2.5 font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="mac-table-row border-b border-white/5">
+                  <td class="px-4 py-3"><input type="checkbox" class="rounded bg-transparent border-gray-600"></td>
+                  <td class="px-4 py-3 font-medium">TikTok 主页视频采集</td>
+                  <td class="px-4 py-3"><span class="bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded text-[10px]">TikTok</span></td>
+                  <td class="px-4 py-3 text-gray-500">抖音主号</td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1.5 text-green-400 text-[11px]"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>已完成</span></td>
+                  <td class="px-4 py-3 text-gray-500">2m 15s</td>
+                  <td class="px-4 py-3"><button class="text-blue-400 hover:text-blue-300 text-[11px]">查看</button></td>
+                </tr>
+                <tr class="mac-table-row border-b border-white/5">
+                  <td class="px-4 py-3"><input type="checkbox" class="rounded bg-transparent border-gray-600"></td>
+                  <td class="px-4 py-3 font-medium">用户粉丝列表采集</td>
+                  <td class="px-4 py-3"><span class="bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded text-[10px]">TikTok</span></td>
+                  <td class="px-4 py-3 text-gray-500">测试账号</td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1.5 text-red-400 text-[11px]"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>失败</span></td>
+                  <td class="px-4 py-3 text-gray-500">30s</td>
+                  <td class="px-4 py-3">
+                    <button class="text-yellow-500 hover:text-yellow-400 text-[11px] mr-2">重试</button>
+                    <button class="text-gray-500 hover:text-gray-400 text-[11px]">日志</button>
+                  </td>
+                </tr>
+                <tr class="mac-table-row">
+                  <td class="px-4 py-3"><input type="checkbox" class="rounded bg-transparent border-gray-600"></td>
+                  <td class="px-4 py-3 font-medium">快手商品信息采集</td>
+                  <td class="px-4 py-3"><span class="bg-orange-500/15 text-orange-400 px-1.5 py-0.5 rounded text-[10px]">快手</span></td>
+                  <td class="px-4 py-3 text-gray-500">快手运营号</td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1.5 text-yellow-500 text-[11px]"><span class="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>运行中</span></td>
+                  <td class="px-4 py-3 text-gray-500">1m 30s...</td>
+                  <td class="px-4 py-3"><button class="text-red-400 hover:text-red-300 text-[11px]">停止</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 数据结果页 -->
+      <div id="page-results" class="page-content flex-1 overflow-auto hidden">
+        <div class="max-w-4xl mx-auto p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-xl font-semibold">数据结果</h2>
+            <div class="flex gap-2">
+              <button class="mac-btn-secondary px-3 py-1.5 rounded text-xs text-gray-300">导出 CSV</button>
+              <button class="mac-btn-secondary px-3 py-1.5 rounded text-xs text-gray-300">导出 JSON</button>
+            </div>
+          </div>
+
+          <div class="mac-card rounded-lg overflow-hidden">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b border-white/5 text-gray-500">
+                  <th class="text-left px-4 py-2.5 font-medium">ID</th>
+                  <th class="text-left px-4 py-2.5 font-medium">站点</th>
+                  <th class="text-left px-4 py-2.5 font-medium">任务</th>
+                  <th class="text-left px-4 py-2.5 font-medium">采集时间</th>
+                  <th class="text-left px-4 py-2.5 font-medium">内容</th>
+                  <th class="text-left px-4 py-2.5 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="mac-table-row border-b border-white/5 cursor-pointer">
+                  <td class="px-4 py-3 text-gray-500">#1001</td>
+                  <td class="px-4 py-3"><span class="bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded text-[10px]">TikTok</span></td>
+                  <td class="px-4 py-3">TikTok 主页视频采集</td>
+                  <td class="px-4 py-3 text-gray-500">10:23</td>
+                  <td class="px-4 py-3"><code class="bg-black/30 px-2 py-0.5 rounded text-[10px] text-gray-500 truncate max-w-[180px] block">{"title":"示例视频"...}</code></td>
+                  <td class="px-4 py-3"><button class="text-blue-400 hover:text-blue-300 text-[11px]">详情</button></td>
+                </tr>
+                <tr class="mac-table-row border-b border-white/5 cursor-pointer">
+                  <td class="px-4 py-3 text-gray-500">#1002</td>
+                  <td class="px-4 py-3"><span class="bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded text-[10px]">TikTok</span></td>
+                  <td class="px-4 py-3">TikTok 主页视频采集</td>
+                  <td class="px-4 py-3 text-gray-500">10:24</td>
+                  <td class="px-4 py-3"><code class="bg-black/30 px-2 py-0.5 rounded text-[10px] text-gray-500 truncate max-w-[180px] block">{"title":"另一个视频"...}</code></td>
+                  <td class="px-4 py-3"><button class="text-blue-400 hover:text-blue-300 text-[11px]">详情</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="px-4 py-2 border-t border-white/5 flex items-center justify-between text-[11px] text-gray-500">
+              <span>共 156 条</span>
+              <div class="flex items-center gap-1">
+                <button class="w-6 h-6 rounded flex items-center justify-center hover:bg-white/5"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+                <button class="w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center text-[10px]">1</button>
+                <button class="w-6 h-6 rounded flex items-center justify-center hover:bg-white/5 text-[10px]">2</button>
+                <button class="w-6 h-6 rounded flex items-center justify-center hover:bg-white/5"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 设置页 -->
+      <div id="page-settings" class="page-content flex-1 overflow-auto hidden">
+        <div class="max-w-xl mx-auto p-6">
+          <h2 class="text-xl font-semibold mb-5">设置</h2>
+
+          <div class="space-y-3">
+            <!-- 通用 -->
+            <div class="mac-card rounded-lg p-4">
+              <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                <svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                通用
+              </h3>
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm">最大并发窗口数</div>
+                    <div class="text-[11px] text-gray-500">同时运行的浏览器上限</div>
+                  </div>
+                  <input type="number" value="5" class="w-16 bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm">请求随机延迟</div>
+                    <div class="text-[11px] text-gray-500">页面操作间隔（秒）</div>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <input type="number" value="2" class="w-12 bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-center">
+                    <span class="text-gray-500 text-xs">~</span>
+                    <input type="number" value="5" class="w-12 bg-black/30 border border-white/10 rounded px-2 py-1 text-xs text-center">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 存储 -->
+            <div class="mac-card rounded-lg p-4">
+              <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                <svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                存储
+              </h3>
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm">Profile 存储路径</div>
+                    <div class="text-[11px] text-gray-500">~/Documents/BrowserProfiles</div>
+                  </div>
+                  <button class="mac-btn-secondary px-2.5 py-1 rounded text-[11px]">更改...</button>
+                </div>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm">结果导出路径</div>
+                    <div class="text-[11px] text-gray-500">~/Downloads</div>
+                  </div>
+                  <button class="mac-btn-secondary px-2.5 py-1 rounded text-[11px]">更改...</button>
+                </div>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm">插件存储路径</div>
+                    <div class="text-[11px] text-gray-500">~/Documents/BrowserPlugins</div>
+                  </div>
+                  <button class="mac-btn-secondary px-2.5 py-1 rounded text-[11px]">更改...</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 插件管理 -->
+            <div class="mac-card rounded-lg p-4">
+              <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                <svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                插件管理
+              </h3>
+              <div class="space-y-2 mb-3">
+                <div class="flex items-center justify-between bg-black/30 rounded-md px-3 py-2">
+                  <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    <div>
+                      <div class="text-xs font-medium">AdBlock Plus</div>
+                      <div class="text-[10px] text-gray-500">v3.2.1</div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded">已启用</span>
+                    <button class="text-red-400 hover:text-red-300"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between bg-black/30 rounded-md px-3 py-2">
+                  <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8l6 6M11 8l6 6M4 4h16v16H4z"/></svg>
+                    <div>
+                      <div class="text-xs font-medium">翻译助手</div>
+                      <div class="text-[10px] text-gray-500">v1.0.5</div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded">已禁用</span>
+                    <button class="text-red-400 hover:text-red-300"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+                  </div>
+                </div>
+              </div>
+              <button class="w-full border border-dashed border-white/10 hover:border-blue-500/50 hover:text-blue-400 text-gray-500 py-2 rounded-md text-xs transition">
+                <svg class="w-3.5 h-3.5 inline mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                导入插件 (.crx / 文件夹)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    function showPage(page) {
+      document.querySelectorAll('.page-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('page-' + page).classList.remove('hidden');
+      document.querySelectorAll('.sidebar-item').forEach(btn => {
+        btn.classList.remove('active', 'text-white');
+        btn.classList.add('text-gray-400');
+      });
+      const activeBtn = document.querySelector('[data-page="' + page + '"]');
+      activeBtn.classList.add('active', 'text-white');
+      activeBtn.classList.remove('text-gray-400');
+    }
+  </script>
+
+</body>
+</html>
