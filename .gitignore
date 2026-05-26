@@ -1,8 +1,33 @@
-.DS_Store
-node_modules/
-dist/
-target/
+# Logs
 *.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+
+# Tauri generated
+src-tauri/gen/schemas
+
+# Environment
 .env
-__pycache__/
-*.pyc
+.env.*
+
+# macOS
+.DS_Store
+*.swp
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Playwright
+.playwright-cli/
+
+# Temporary
+*.tmp
+.docs/
