@@ -1102,6 +1102,7 @@ function App() {
                   filter={profileFilter}
                   groupById={groupById}
                   groups={snapshot.groups}
+                  platforms={snapshot.platforms}
                   profiles={filteredProfiles}
                   profileSort={profileSort}
                   proxyById={proxyById}
@@ -1522,6 +1523,7 @@ function ProfilesView({
   extensions,
   filter,
   groups,
+  platforms,
   profiles,
   groupById,
   proxyById,
@@ -1544,6 +1546,7 @@ function ProfilesView({
   extensions: ExtensionItem[];
   filter: string;
   groups: Group[];
+  platforms: Platform[];
   profiles: Profile[];
   profileSort: { key: "number" | "name" | "group" | "proxy"; direction: "asc" | "desc" };
   proxies: ProxyItem[];
@@ -1784,7 +1787,17 @@ function ProfilesView({
                 <span>Timezone</span>
                 <span>{selectedProfile.timezone || "Asia/Shanghai"}</span>
                 <span>Platform</span>
-                <span>{selectedProfile.platformUrl || "未设置"}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {(() => {
+                    const plat = platforms.find((p) => p.id === selectedProfile.platformId);
+                    return plat ? (
+                      <>
+                        <PlatformLogo logoPath={plat.logoPath} name={plat.name} size={16} />
+                        {plat.name}
+                      </>
+                    ) : (selectedProfile.platformUrl || "未设置");
+                  })()}
+                </span>
               </div>
             </div>
             <div className="extension-summary">
