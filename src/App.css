@@ -1658,6 +1658,77 @@ tbody tr.row-selected {
   white-space: nowrap;
 }
 
+.platform-picker {
+  position: relative;
+  width: 100%;
+}
+
+.platform-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 10px;
+  height: 34px;
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+
+.platform-picker-trigger:hover {
+  border-color: var(--accent);
+}
+
+.picker-arrow {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.platform-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 200;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.platform-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.platform-picker-option:hover {
+  background: var(--hover);
+}
+
+.platform-picker-option.selected {
+  background: var(--accent-soft, rgba(99,102,241,0.1));
+  color: var(--accent);
+  font-weight: 500;
+}
+
 .modal-body {
   overflow: auto;
 }
