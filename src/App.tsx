@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
@@ -2497,6 +2497,32 @@ function ProxyManager({
   );
 }
 
+function PlatformLogo({ logoPath, name, size = 28 }: { logoPath: string; name: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const src = logoPath
+    ? logoPath.startsWith("/logos/")
+      ? logoPath
+      : convertFileSrc(logoPath)
+    : "";
+  if (!src || failed) {
+    return (
+      <span className="platform-logo-fallback" style={{ width: size, height: size, fontSize: size * 0.55 }}>
+        {name.charAt(0).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={name}
+      width={size}
+      height={size}
+      className="platform-logo-img"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function PlatformManager({
   busy,
   platforms,
@@ -2512,6 +2538,11 @@ function PlatformManager({
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [logoPath, setLogoPath] = useState("");
+
+  async function pickLogo() {
+    const selected = await open({ directory: false, multiple: false, filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "svg", "webp"] }] });
+    if (typeof selected === "string") setLogoPath(selected);
+  }
 
   return (
     <>
@@ -2532,8 +2563,18 @@ function PlatformManager({
           <Field label="平台 URL">
             <input placeholder="https://shopee.com" value={url} onChange={(e) => setUrl(e.target.value)} />
           </Field>
-          <Field label="Logo 路径（可选）">
-            <input placeholder="留空使用默认图标" value={logoPath} onChange={(e) => setLogoPath(e.target.value)} />
+          <Field label="Logo（可选）">
+            <div className="logo-upload-row">
+              {logoPath && (
+                <PlatformLogo logoPath={logoPath} name={name || "?"} size={32} />
+              )}
+              <button className="mini-btn" type="button" onClick={() => void pickLogo()}>
+                {logoPath ? "重新选择" : "上传 Logo"}
+              </button>
+              {logoPath && (
+                <span className="logo-filename">{logoPath.split("/").pop()}</span>
+              )}
+            </div>
           </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
             <button className="btn primary" type="button" disabled={!name.trim() || !url.trim() || busy === "platform"} onClick={async () => { await onSave({ name: name.trim(), url: url.trim(), logoPath: logoPath.trim() || undefined }); setName(""); setUrl(""); setLogoPath(""); setShowAdd(false); }}>
@@ -2553,7 +2594,7 @@ function PlatformManager({
               <tr key={p.id}>
                 <td>
                   <span className="platform-cell">
-                    <span className="platform-logo-icon">{platformLogoEmoji(p.name)}</span>
+                    <PlatformLogo logoPath={p.logoPath} name={p.name} size={24} />
                     <strong>{p.name}</strong>
                   </span>
                 </td>

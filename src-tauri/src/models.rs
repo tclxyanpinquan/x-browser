@@ -495,6 +495,10 @@ impl AppStore {
     }
 }
 
+pub fn builtin_logo_path_pub(id: &str) -> String {
+    builtin_logo_path(id)
+}
+
 pub fn builtin_platforms() -> Vec<Platform> {
     vec![
         builtin_platform("facebook", "Facebook", "https://www.facebook.com"),
@@ -509,11 +513,7 @@ pub fn builtin_platforms() -> Vec<Platform> {
         builtin_platform("youtube", "YouTube", "https://www.youtube.com"),
         builtin_platform("amazon", "Amazon", "https://www.amazon.com"),
         builtin_platform("paypal", "PayPal", "https://www.paypal.com"),
-        builtin_platform(
-            "google-accounts",
-            "Google Accounts",
-            "https://accounts.google.com",
-        ),
+        builtin_platform("google-accounts", "Google Accounts", "https://accounts.google.com"),
         builtin_platform("aliexpress", "AliExpress", "https://www.aliexpress.com"),
         builtin_platform("alibaba", "Alibaba", "https://www.alibaba.com"),
         builtin_platform("vinted", "Vinted", "https://www.vinted.com"),
@@ -533,12 +533,24 @@ pub fn builtin_platforms() -> Vec<Platform> {
     ]
 }
 
+fn builtin_logo_path(id: &str) -> String {
+    let filename = match id {
+        "x-twitter" => "twitter",
+        "whatsapp-web" => "whatsapp",
+        "google-accounts" => "google",
+        "mail-com" => "mail",
+        "linkedin-cn" => "linkedin",
+        _ => id,
+    };
+    format!("/logos/{}.svg", filename)
+}
+
 fn builtin_platform(id: &str, name: &str, url: &str) -> Platform {
     Platform {
         id: id.into(),
         name: name.into(),
         url: url.into(),
-        logo_path: String::new(),
+        logo_path: builtin_logo_path(id),
         is_builtin: true,
         created_at: "system".into(),
     }

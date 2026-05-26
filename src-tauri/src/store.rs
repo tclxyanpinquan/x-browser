@@ -256,9 +256,17 @@ fn normalize_store(store: &mut AppStore) {
     }
 
     let builtin = builtin_platforms();
+    let existing_ids: std::collections::HashSet<String> =
+        store.platforms.iter().map(|p| p.id.clone()).collect();
     for platform in builtin {
-        if !store.platforms.iter().any(|item| item.id == platform.id) {
+        if !existing_ids.contains(&platform.id) {
             store.platforms.push(platform);
+        }
+    }
+    // keep logo_path in sync for builtins that are still present
+    for platform in &mut store.platforms {
+        if platform.is_builtin && platform.logo_path.is_empty() {
+            platform.logo_path = crate::models::builtin_logo_path_pub(&platform.id);
         }
     }
 

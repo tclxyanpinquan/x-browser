@@ -768,14 +768,6 @@ pub fn save_platform(state: State<AppState>, input: PlatformInput) -> Result<App
 #[tauri::command]
 pub fn delete_platform(state: State<AppState>, platform_id: String) -> Result<AppSnapshot, String> {
     let mut guard = lock_state(&state)?;
-    if guard
-        .store
-        .platforms
-        .iter()
-        .any(|platform| platform.id == platform_id && platform.is_builtin)
-    {
-        return Err("内置平台不可删除".into());
-    }
     guard
         .store
         .platforms
