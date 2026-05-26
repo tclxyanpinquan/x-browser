@@ -260,6 +260,76 @@ const emptySettings: Settings = {
   logLevel: "info",
 };
 
+const TIMEZONE_OPTIONS = [
+  "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Tokyo", "Asia/Seoul", "Asia/Singapore",
+  "Asia/Bangkok", "Asia/Kolkata", "Asia/Dubai", "Asia/Jakarta",
+  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Sao_Paulo", "America/Mexico_City", "America/Toronto",
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Moscow",
+  "Australia/Sydney", "Pacific/Auckland", "UTC",
+];
+
+const LOCALE_OPTIONS = [
+  { value: "zh-CN", label: "中文（简体）" },
+  { value: "zh-TW", label: "中文（繁体）" },
+  { value: "en-US", label: "English (US)" },
+  { value: "en-GB", label: "English (UK)" },
+  { value: "ja-JP", label: "日本語" },
+  { value: "ko-KR", label: "한국어" },
+  { value: "fr-FR", label: "Français" },
+  { value: "de-DE", label: "Deutsch" },
+  { value: "es-ES", label: "Español" },
+  { value: "pt-BR", label: "Português (BR)" },
+  { value: "ru-RU", label: "Русский" },
+  { value: "ar-SA", label: "العربية" },
+  { value: "th-TH", label: "ไทย" },
+  { value: "vi-VN", label: "Tiếng Việt" },
+  { value: "id-ID", label: "Bahasa Indonesia" },
+];
+
+const PLATFORM_LOGOS: Record<string, string> = {
+  facebook: "🌐", instagram: "📷", twitter: "🐦", tiktok: "🎵",
+  youtube: "▶️", amazon: "📦", ebay: "🛒", shopee: "🛍️",
+  lazada: "🏪", google: "🔍", linkedin: "💼", pinterest: "📌",
+  reddit: "🔶", discord: "💬", telegram: "✈️", whatsapp: "📱",
+};
+
+function platformLogoEmoji(name: string): string {
+  const key = name.toLowerCase();
+  for (const [k, v] of Object.entries(PLATFORM_LOGOS)) {
+    if (key.includes(k)) return v;
+  }
+  return "🌐";
+}
+
+function generateRandomFingerprint(): Partial<ProfileInput> {
+  const widths = [1280, 1366, 1440, 1536, 1600, 1920];
+  const heights = [720, 768, 800, 900, 1024, 1080];
+  const dprs = [1, 1.5, 2, 2.5, 3];
+  const webrtcModes = ["default", "privacy", "disable"];
+  const uas = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+  ];
+  const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+  const w = pick(widths);
+  const h = pick(heights);
+  return {
+    userAgent: pick(uas),
+    screenWidth: w,
+    screenHeight: h,
+    windowWidth: w,
+    windowHeight: h,
+    devicePixelRatio: pick(dprs),
+    webrtcMode: pick(webrtcModes),
+    timezone: pick(TIMEZONE_OPTIONS),
+    locale: pick(LOCALE_OPTIONS).value,
+  };
+}
+
 const emptySnapshot: AppSnapshot = {
   groups: [{ id: "default", name: "默认", color: "#3b82f6", createdAt: "system" }],
   proxies: [],
@@ -905,7 +975,7 @@ function App() {
             screenWidth: 0,
             screenHeight: 0,
             devicePixelRatio: 0,
-            extensionIds: snapshot.extensions.filter((item) => item.enabled).map((item) => item.id),
+            extensionIds: [],
             startUrl: snapshot.platforms[0]?.url ?? "https://example.com",
           },
     );
@@ -2441,6 +2511,7 @@ function PlatformManager({
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [logoPath, setLogoPath] = useState("");
 
   return (
     <>
@@ -2449,7 +2520,7 @@ function PlatformManager({
           <div className="panel-title">平台管理</div>
           <div className="panel-sub">管理采集目标平台，支持自定义 Logo</div>
         </div>
-        <button className="btn primary" type="button" onClick={() => { setShowAdd(true); setName(""); setUrl(""); }}>
+        <button className="btn primary" type="button" onClick={() => { setShowAdd(true); setName(""); setUrl(""); setLogoPath(""); }}>
           添加平台
         </button>
       </div>
@@ -2461,8 +2532,11 @@ function PlatformManager({
           <Field label="平台 URL">
             <input placeholder="https://shopee.com" value={url} onChange={(e) => setUrl(e.target.value)} />
           </Field>
+          <Field label="Logo 路径（可选）">
+            <input placeholder="留空使用默认图标" value={logoPath} onChange={(e) => setLogoPath(e.target.value)} />
+          </Field>
           <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
-            <button className="btn primary" type="button" disabled={!name.trim() || !url.trim() || busy === "platform"} onClick={async () => { await onSave({ name: name.trim(), url: url.trim() }); setName(""); setUrl(""); setShowAdd(false); }}>
+            <button className="btn primary" type="button" disabled={!name.trim() || !url.trim() || busy === "platform"} onClick={async () => { await onSave({ name: name.trim(), url: url.trim(), logoPath: logoPath.trim() || undefined }); setName(""); setUrl(""); setLogoPath(""); setShowAdd(false); }}>
               保存
             </button>
             <button className="btn" type="button" onClick={() => setShowAdd(false)}>取消</button>
@@ -2477,16 +2551,17 @@ function PlatformManager({
           <tbody>
             {platforms.map((p) => (
               <tr key={p.id}>
-                <td><strong>{p.name}</strong></td>
+                <td>
+                  <span className="platform-cell">
+                    <span className="platform-logo-icon">{platformLogoEmoji(p.name)}</span>
+                    <strong>{p.name}</strong>
+                  </span>
+                </td>
                 <td>{p.url}</td>
                 <td><Chip color={p.isBuiltin ? "cyan" : "green"}>{p.isBuiltin ? "内置" : "自定义"}</Chip></td>
                 <td>
                   <div className="row-actions">
-                    {!p.isBuiltin ? (
-                      <button className="mini-btn danger" type="button" onClick={() => onDelete(p)}>删除</button>
-                    ) : (
-                      <span className="muted-text">内置不可删除</span>
-                    )}
+                    <button className="mini-btn danger" type="button" onClick={() => onDelete(p)}>删除</button>
                   </div>
                 </td>
               </tr>
@@ -2638,9 +2713,10 @@ function SettingsView({
                   value={settings.logLevel}
                   onChange={(event) => onSettingsChange({ ...settings, logLevel: event.target.value })}
                 >
-                  <option value="info">Info</option>
                   <option value="debug">Debug</option>
+                  <option value="info">Info</option>
                   <option value="warn">Warn</option>
+                  <option value="error">Error</option>
                 </select>
               </Field>
             </div>
@@ -2865,6 +2941,7 @@ function ProfileModal({
             </FormRow>
             <FormRow label="平台">
               <select
+                className="platform-select"
                 value={value.platformId ?? ""}
                 onChange={(event) => {
                   const platformId = event.target.value || null;
@@ -2880,7 +2957,7 @@ function ProfileModal({
               >
                 {platforms.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} — {p.url}
+                    {platformLogoEmoji(p.name)} {p.name}
                   </option>
                 ))}
               </select>
@@ -3011,10 +3088,18 @@ function ProfileModal({
 
           <FormSection title="常用设置">
             <FormRow label="语言">
-              <input value={value.locale} onChange={(event) => onChange({ ...value, locale: event.target.value })} />
+              <select value={value.locale} onChange={(event) => onChange({ ...value, locale: event.target.value })}>
+                {LOCALE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </FormRow>
             <FormRow label="时区">
-              <input value={value.timezone} onChange={(event) => onChange({ ...value, timezone: event.target.value })} />
+              <select value={value.timezone} onChange={(event) => onChange({ ...value, timezone: event.target.value })}>
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
             </FormRow>
             <FormRow label="窗口尺寸">
               <div className="inline-inputs">
@@ -3165,13 +3250,22 @@ function ProfileModal({
             </div>
           </FormSection>
         </div>
-        <div className="modal-foot">
-          <button className="btn" type="button" onClick={onCancel}>
-            取消
+        <div className="modal-foot" style={{ justifyContent: "space-between" }}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => onChange({ ...value, ...generateRandomFingerprint() })}
+          >
+            🎲 一键生成随机指纹
           </button>
-          <button className="btn primary" type="button" disabled={busy} onClick={() => void onSave()}>
-            保存 Profile
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn" type="button" onClick={onCancel}>
+              取消
+            </button>
+            <button className="btn primary" type="button" disabled={busy} onClick={() => void onSave()}>
+              保存 Profile
+            </button>
+          </div>
         </div>
       </div>
     </div>
