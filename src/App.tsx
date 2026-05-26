@@ -287,20 +287,6 @@ const LOCALE_OPTIONS = [
   { value: "id-ID", label: "Bahasa Indonesia" },
 ];
 
-const PLATFORM_LOGOS: Record<string, string> = {
-  facebook: "🌐", instagram: "📷", twitter: "🐦", tiktok: "🎵",
-  youtube: "▶️", amazon: "📦", ebay: "🛒", shopee: "🛍️",
-  lazada: "🏪", google: "🔍", linkedin: "💼", pinterest: "📌",
-  reddit: "🔶", discord: "💬", telegram: "✈️", whatsapp: "📱",
-};
-
-function platformLogoEmoji(name: string): string {
-  const key = name.toLowerCase();
-  for (const [k, v] of Object.entries(PLATFORM_LOGOS)) {
-    if (key.includes(k)) return v;
-  }
-  return "🌐";
-}
 
 function generateRandomFingerprint(): Partial<ProfileInput> {
   const widths = [1280, 1366, 1440, 1536, 1600, 1920];
@@ -2523,6 +2509,56 @@ function PlatformLogo({ logoPath, name, size = 28 }: { logoPath: string; name: s
   );
 }
 
+function PlatformPicker({
+  platforms,
+  value,
+  onChange,
+}: {
+  platforms: Platform[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = platforms.find((p) => p.id === value);
+  return (
+    <div className="platform-picker" role="combobox" aria-expanded={open}>
+      <button
+        type="button"
+        className="platform-picker-trigger"
+        onClick={() => setOpen((v) => !v)}
+        onBlur={(e) => { if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) setOpen(false); }}
+      >
+        {selected ? (
+          <>
+            <PlatformLogo logoPath={selected.logoPath} name={selected.name} size={20} />
+            <span>{selected.name}</span>
+          </>
+        ) : (
+          <span className="muted-text">请选择平台</span>
+        )}
+        <span className="picker-arrow">▾</span>
+      </button>
+      {open && (
+        <div className="platform-picker-dropdown" role="listbox">
+          {platforms.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="option"
+              aria-selected={p.id === value}
+              className={`platform-picker-option${p.id === value ? " selected" : ""}`}
+              onMouseDown={(e) => { e.preventDefault(); onChange(p.id); setOpen(false); }}
+            >
+              <PlatformLogo logoPath={p.logoPath} name={p.name} size={20} />
+              <span>{p.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlatformManager({
   busy,
   platforms,
@@ -2981,27 +3017,20 @@ function ProfileModal({
               </select>
             </FormRow>
             <FormRow label="平台">
-              <select
-                className="platform-select"
+              <PlatformPicker
+                platforms={platforms}
                 value={value.platformId ?? ""}
-                onChange={(event) => {
-                  const platformId = event.target.value || null;
+                onChange={(platformId) => {
                   const platform = platforms.find((p) => p.id === platformId);
                   onChange({
                     ...value,
-                    platformId,
+                    platformId: platformId || null,
                     platformName: platform?.name ?? "",
                     platformUrl: platform?.url ?? "",
                     startUrl: platform?.url ?? value.startUrl,
                   });
                 }}
-              >
-                {platforms.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {platformLogoEmoji(p.name)} {p.name}
-                  </option>
-                ))}
-              </select>
+              />
             </FormRow>
             <FormRow label="用户名">
               <input
