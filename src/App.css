@@ -478,6 +478,40 @@ svg {
   gap: 10px;
 }
 
+.filter-select {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.toolbar-search {
+  height: 34px;
+  width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.toolbar-search:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 .toolbar-count {
   color: var(--muted);
   font-size: 13px;

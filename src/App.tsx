@@ -431,6 +431,7 @@ function App() {
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [query, setQuery] = useState("");
   const [profileFilter, setProfileFilter] = useState("all");
+  const [profileGroupFilter, setProfileGroupFilter] = useState("all");
   const [taskFilter, setTaskFilter] = useState("all");
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");
@@ -486,7 +487,9 @@ function App() {
         (profileFilter === "running" && profile.status === "running") ||
         (profileFilter === "stopped" && profile.status !== "running" && !profile.lastError) ||
         (profileFilter === "error" && Boolean(profile.lastError));
-      return matchesQuery && matchesFilter;
+      const matchesGroup =
+        profileGroupFilter === "all" || profile.groupId === profileGroupFilter;
+      return matchesQuery && matchesFilter && matchesGroup;
     });
     return [...rows].sort((a, b) => {
       const direction = profileSort.direction === "asc" ? 1 : -1;
@@ -495,7 +498,7 @@ function App() {
       if (typeof av === "number" && typeof bv === "number") return (av - bv) * direction;
       return String(av).localeCompare(String(bv), "zh-Hans-CN") * direction;
     });
-  }, [groupById, profileFilter, profileSort, proxyById, query, snapshot.profiles]);
+  }, [groupById, profileFilter, profileGroupFilter, profileSort, proxyById, query, snapshot.profiles]);
 
   const filteredTasks = useMemo(() => {
     return snapshot.tasks.filter((task) => {
@@ -1039,15 +1042,19 @@ function App() {
                   busy={busy}
                   filter={profileFilter}
                   groupById={groupById}
+                  groupFilter={profileGroupFilter}
                   groups={snapshot.groups}
                   platforms={snapshot.platforms}
                   profiles={filteredProfiles}
                   profileSort={profileSort}
                   proxyById={proxyById}
                   proxies={snapshot.proxies}
+                  query={query}
                   selectedProfile={selectedProfile}
                   selectedProfileIds={selectedProfileIds}
                   setFilter={setProfileFilter}
+                  setGroupFilter={setProfileGroupFilter}
+                  setQuery={setQuery}
                   onDelete={deleteProfile}
                   onDeleteSelected={deleteSelectedProfiles}
                   onDuplicate={duplicateProfile}
@@ -1451,13 +1458,17 @@ function ProfilesView({
   busy,
   filter,
   groups,
+  groupFilter,
   platforms,
   profiles,
   groupById,
   proxyById,
+  query,
   selectedProfile,
   selectedProfileIds,
   setFilter,
+  setGroupFilter,
+  setQuery,
   onDelete,
   onDeleteSelected,
   onDuplicate,
@@ -1473,6 +1484,7 @@ function ProfilesView({
 }: {
   busy: string;
   filter: string;
+  groupFilter: string;
   groups: Group[];
   platforms: Platform[];
   profiles: Profile[];
@@ -1480,9 +1492,12 @@ function ProfilesView({
   proxies: ProxyItem[];
   groupById: Map<string, Group>;
   proxyById: Map<string, ProxyItem>;
+  query: string;
   selectedProfile?: Profile;
   selectedProfileIds: string[];
   setFilter: (filter: string) => void;
+  setGroupFilter: (filter: string) => void;
+  setQuery: (query: string) => void;
   onDelete: (profile: Profile) => void;
   onDeleteSelected: () => void;
   onDuplicate: (profile: Profile) => void;
@@ -1513,6 +1528,22 @@ function ProfilesView({
               ["stopped", "已停止"],
               ["error", "异常"],
             ]}
+          />
+          <select
+            className="filter-select"
+            value={groupFilter}
+            onChange={(event) => setGroupFilter(event.target.value)}
+          >
+            <option value="all">全部分组</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+          <input
+            className="toolbar-search"
+            placeholder="搜索名称..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
           />
           <div className="toolbar-actions">
             <span className="toolbar-count">{profiles.length} 个 Profile</span>

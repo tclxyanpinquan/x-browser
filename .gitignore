@@ -31,3 +31,4 @@ src-tauri/gen/schemas
 # Temporary
 *.tmp
 .docs/
+CLAUDE.md
