@@ -4,10 +4,6 @@ use crate::{
         stop_profile as stop_browser_profile,
     },
     cdp::run_page_script,
-    extensions::{
-        delete_extension, import_extension_crx, import_extension_directory, reimport_extension,
-        toggle_extension,
-    },
     models::{
         AppSnapshot, ExportRequest, Group, GroupInput, Platform, PlatformInput, Profile,
         ProfileInput, Proxy, ProxyInput, ResultItem, Settings, Task, TaskInput, TaskRun,
@@ -23,7 +19,7 @@ use uuid::Uuid;
 fn lock_state<'a>(
     state: &'a State<AppState>,
 ) -> Result<std::sync::MutexGuard<'a, InnerState>, String> {
-    state.inner.lock().map_err(|_| "后端状态锁失效".to_string())
+    Ok(state.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner()))
 }
 
 fn persist(state: &InnerState) -> Result<(), String> {
@@ -84,7 +80,6 @@ fn build_profile(input: ProfileInput, state: &mut InnerState) -> Profile {
         note: input.note.trim().to_string(),
         platform_url: platform_url.clone(),
         proxy: proxy_url,
-        plugins: input.extension_ids.len(),
         cookie: cookie_state,
         cookie_json,
         locale: normalize_locale(&input.locale),
@@ -122,7 +117,6 @@ fn build_profile(input: ProfileInput, state: &mut InnerState) -> Profile {
             .as_ref()
             .map(|profile| profile.status.clone())
             .unwrap_or_else(|| "stopped".into()),
-        extension_ids: input.extension_ids,
         start_url: primary_profile_url(&input.start_url, &platform_url),
         user_data_dir,
         last_error: String::new(),
@@ -445,7 +439,6 @@ fn duplicate_profile_record(state: &mut InnerState, profile_id: &str) -> Result<
         note: source.note,
         platform_url: source.platform_url,
         proxy: source.proxy,
-        plugins: source.extension_ids.len(),
         cookie: source.cookie,
         cookie_json: source.cookie_json,
         locale: source.locale,
@@ -471,7 +464,6 @@ fn duplicate_profile_record(state: &mut InnerState, profile_id: &str) -> Result<
         status: "stopped".into(),
         user_data_dir: profile_user_data_dir(state, &name, &id),
         last_error: String::new(),
-        extension_ids: source.extension_ids,
         start_url: source.start_url,
     })
 }
@@ -799,57 +791,27 @@ pub fn stop_profile(state: State<AppState>, profile_id: String) -> Result<AppSna
 }
 
 #[tauri::command]
-pub fn import_extension_from_directory(
+pub fn clear_profile_cache(
     state: State<AppState>,
-    source: String,
+    profile_id: String,
 ) -> Result<AppSnapshot, String> {
     let mut guard = lock_state(&state)?;
-    import_extension_directory(&mut guard, &source)?;
-    persist(&guard)?;
-    Ok(snapshot(&mut guard))
-}
-
-#[tauri::command]
-pub fn import_extension_from_crx(
-    state: State<AppState>,
-    source: String,
-) -> Result<AppSnapshot, String> {
-    let mut guard = lock_state(&state)?;
-    import_extension_crx(&mut guard, &source)?;
-    persist(&guard)?;
-    Ok(snapshot(&mut guard))
-}
-
-#[tauri::command]
-pub fn set_extension_enabled(
-    state: State<AppState>,
-    extension_id: String,
-    enabled: bool,
-) -> Result<AppSnapshot, String> {
-    let mut guard = lock_state(&state)?;
-    toggle_extension(&mut guard, &extension_id, enabled)?;
-    persist(&guard)?;
-    Ok(snapshot(&mut guard))
-}
-
-#[tauri::command]
-pub fn delete_extension_item(
-    state: State<AppState>,
-    extension_id: String,
-) -> Result<AppSnapshot, String> {
-    let mut guard = lock_state(&state)?;
-    delete_extension(&mut guard, &extension_id)?;
-    persist(&guard)?;
-    Ok(snapshot(&mut guard))
-}
-
-#[tauri::command]
-pub fn reimport_extension_item(
-    state: State<AppState>,
-    extension_id: String,
-) -> Result<AppSnapshot, String> {
-    let mut guard = lock_state(&state)?;
-    reimport_extension(&mut guard, &extension_id)?;
+    let profile = guard
+        .store
+        .profiles
+        .iter()
+        .find(|item| item.id == profile_id)
+        .ok_or_else(|| "Profile 不存在".to_string())?;
+    let user_data_dir = profile.user_data_dir.clone();
+    let name = profile.name.clone();
+    if !user_data_dir.trim().is_empty() {
+        let base = std::path::Path::new(&user_data_dir);
+        for dir_name in ["Cache", "Code Cache", "GPUCache", "DawnCache", "ShaderCache"] {
+            let _ = fs::remove_dir_all(base.join(dir_name));
+            let _ = fs::remove_dir_all(base.join("Default").join(dir_name));
+        }
+    }
+    guard.log("info", format!("已清除 Profile 缓存: {name}"));
     persist(&guard)?;
     Ok(snapshot(&mut guard))
 }
@@ -1023,9 +985,7 @@ pub fn refresh_runtime(state: State<AppState>) -> Result<AppSnapshot, String> {
 pub fn poll_browser_sessions(app: &tauri::AppHandle) {
     let snapshot = {
         let state = app.state::<AppState>();
-        let Ok(mut guard) = state.inner.lock() else {
-            return;
-        };
+        let mut guard = state.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !refresh_sessions(&mut guard) {
             return;
         }
@@ -1068,7 +1028,6 @@ mod tests {
             note: String::new(),
             platform_url: String::new(),
             proxy: String::new(),
-            plugins: 0,
             cookie: "无 Cookie".into(),
             cookie_json: String::new(),
             locale: "zh-CN".into(),
@@ -1092,7 +1051,6 @@ mod tests {
             device_pixel_ratio: 0.0,
             last: "未启动".into(),
             status: "stopped".into(),
-            extension_ids: Vec::new(),
             start_url: "about:blank".into(),
             user_data_dir,
             last_error: String::new(),
@@ -1104,17 +1062,14 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let data_dir = temp.path().join("data");
         let profile_root = data_dir.join("profiles");
-        let extension_root = data_dir.join("extensions");
         let export_root = data_dir.join("exports");
         let mut state = InnerState {
             store_path: data_dir.join("store.json"),
             data_dir,
             profile_root: profile_root.clone(),
-            extension_root,
             export_root,
             store: AppStore::new(
                 profile_root.to_string_lossy().into_owned(),
-                String::new(),
                 String::new(),
             ),
             browser_processes: HashMap::<String, Child>::new(),
@@ -1140,7 +1095,6 @@ mod tests {
         source.note = "TikTok".into();
         source.platform_url = "https://example.com".into();
         source.proxy = "socks5://user:pass@127.0.0.1:1080".into();
-        source.plugins = 1;
         source.cookie = "已导入".into();
         source.cookie_json = r#"{"cookies":[]}"#.into();
         source.locale = "en-US".into();
@@ -1157,7 +1111,6 @@ mod tests {
         source.launch_args = "--disable-features=Demo".into();
         source.last = "just now".into();
         source.status = "running".into();
-        source.extension_ids = vec!["ext-1".into()];
         source.start_url = "https://example.com/start".into();
         source.last_error = "old error".into();
         state.store.profiles.push(source);
@@ -1169,8 +1122,6 @@ mod tests {
         assert_eq!(copy.name, "Research Copy");
         assert_eq!(copy.proxy, "socks5://user:pass@127.0.0.1:1080");
         assert_eq!(copy.cookie_json, r#"{"cookies":[]}"#);
-        assert_eq!(copy.extension_ids, vec!["ext-1".to_string()]);
-        assert_eq!(copy.plugins, 1);
         assert_eq!(copy.status, "stopped");
         assert_eq!(copy.last, "未启动");
         assert!(copy.last_error.is_empty());
@@ -1186,17 +1137,14 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let data_dir = temp.path().join("data");
         let profile_root = data_dir.join("profiles");
-        let extension_root = data_dir.join("extensions");
         let export_root = data_dir.join("exports");
         let mut state = InnerState {
             store_path: data_dir.join("store.json"),
             data_dir,
             profile_root: profile_root.clone(),
-            extension_root,
             export_root,
             store: AppStore::new(
                 profile_root.to_string_lossy().into_owned(),
-                String::new(),
                 String::new(),
             ),
             browser_processes: HashMap::<String, Child>::new(),

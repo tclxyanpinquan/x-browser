@@ -1,7 +1,6 @@
 mod browser;
 mod cdp;
 mod commands;
-mod extensions;
 mod models;
 mod store;
 
@@ -33,11 +32,7 @@ pub fn run() {
             commands::delete_platform,
             commands::start_profile,
             commands::stop_profile,
-            commands::import_extension_from_directory,
-            commands::import_extension_from_crx,
-            commands::set_extension_enabled,
-            commands::delete_extension_item,
-            commands::reimport_extension_item,
+            commands::clear_profile_cache,
             commands::save_task,
             commands::delete_task,
             commands::run_task,
@@ -63,16 +58,15 @@ pub fn run() {
                 api.prevent_close();
                 let app_handle = window.app_handle();
                 let state = app_handle.state::<AppState>();
-                if let Ok(mut guard) = state.inner.lock() {
-                    for (_, mut child) in guard.browser_processes.drain() {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                    }
-                    for (_, mut child) in guard.proxy_processes.drain() {
-                        let _ = child.start_kill();
-                    }
-                    let _ = guard.save();
+                let mut guard = state.inner.lock().unwrap_or_else(|e| e.into_inner());
+                for (_, mut child) in guard.browser_processes.drain() {
+                    let _ = child.kill();
+                    let _ = child.wait();
                 }
+                for (_, mut child) in guard.proxy_processes.drain() {
+                    let _ = child.start_kill();
+                }
+                let _ = guard.save();
                 app_handle.exit(0);
             }
         })

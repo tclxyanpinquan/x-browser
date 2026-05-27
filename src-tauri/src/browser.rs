@@ -125,13 +125,6 @@ pub fn start_profile(state: &mut InnerState, profile_id: &str) -> Result<Browser
         command.arg(format!("--proxy-server={}", proxy_launch.proxy_arg));
     }
 
-    let extension_paths = enabled_extension_paths(state, &profile);
-    if !extension_paths.is_empty() {
-        let joined = extension_paths.join(",");
-        command.arg(format!("--disable-extensions-except={joined}"));
-        command.arg(format!("--load-extension={joined}"));
-    }
-
     if !profile.locale.trim().is_empty() {
         command.arg(format!("--lang={}", profile.locale));
         command.arg(format!("--accept-lang={}", profile.locale));
@@ -187,7 +180,6 @@ pub fn start_profile(state: &mut InnerState, profile_id: &str) -> Result<Browser
     profile_for_store.status = "running".into();
     profile_for_store.last = "just now".into();
     profile_for_store.user_data_dir = user_data_dir.to_string_lossy().into_owned();
-    profile_for_store.plugins = profile_for_store.extension_ids.len();
     state.upsert_profile(profile_for_store);
 
     let session = BrowserSession {
@@ -247,28 +239,44 @@ pub fn refresh_sessions(state: &mut InnerState) -> bool {
     let now = Local::now();
     let sessions = state.store.browser_sessions.clone();
     for session in sessions {
+        let mut dead = false;
+
         if let Some(child) = state.browser_processes.get_mut(&session.profile_id) {
             if let Ok(Some(_)) = child.try_wait() {
-                state.browser_processes.remove(&session.profile_id);
-                if let Some(proxy_child) = state.proxy_processes.remove(&session.profile_id) {
-                    kill_proxy_child(proxy_child);
-                }
-                state.remove_session(&session.profile_id);
-                if let Some(profile) = state
-                    .store
-                    .profiles
-                    .iter_mut()
-                    .find(|item| item.id == session.profile_id)
-                {
-                    profile.status = "stopped".into();
-                }
-                state.log(
-                    "info",
-                    format!("检测到 Profile {} 浏览器窗口已关闭", session.profile),
-                );
-                changed = true;
-                continue;
+                dead = true;
             }
+        } else {
+            dead = true;
+        }
+
+        if !dead {
+            if let Some(port) = session.port {
+                if current_url(port).is_none() {
+                    dead = true;
+                }
+            }
+        }
+
+        if dead {
+            state.browser_processes.remove(&session.profile_id);
+            if let Some(proxy_child) = state.proxy_processes.remove(&session.profile_id) {
+                kill_proxy_child(proxy_child);
+            }
+            state.remove_session(&session.profile_id);
+            if let Some(profile) = state
+                .store
+                .profiles
+                .iter_mut()
+                .find(|item| item.id == session.profile_id)
+            {
+                profile.status = "stopped".into();
+            }
+            state.log(
+                "info",
+                format!("检测到 Profile {} 浏览器窗口已关闭", session.profile),
+            );
+            changed = true;
+            continue;
         }
 
         let mut next = session.clone();
@@ -314,17 +322,14 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let data_dir = temp.path().to_path_buf();
         let profile_root = data_dir.join("profiles");
-        let extension_root = data_dir.join("extensions");
         let export_root = data_dir.join("exports");
         let mut state = InnerState {
             data_dir: data_dir.clone(),
             store_path: data_dir.join("store.json"),
             profile_root: profile_root.clone(),
-            extension_root,
             export_root,
             store: AppStore::new(
                 profile_root.to_string_lossy().into_owned(),
-                String::new(),
                 String::new(),
             ),
             browser_processes: HashMap::<String, Child>::new(),
@@ -349,7 +354,6 @@ mod tests {
             note: String::new(),
             platform_url: String::new(),
             proxy: String::new(),
-            plugins: 0,
             cookie: String::new(),
             cookie_json: String::new(),
             locale: "zh-CN".into(),
@@ -373,7 +377,6 @@ mod tests {
             device_pixel_ratio: 0.0,
             last: "just now".into(),
             status: "running".into(),
-            extension_ids: Vec::new(),
             start_url: "about:blank".into(),
             user_data_dir: profile_root.join("demo").to_string_lossy().into_owned(),
             last_error: String::new(),
@@ -428,21 +431,6 @@ pub fn current_url(port: u16) -> Option<String> {
         .map(String::from)
 }
 
-fn enabled_extension_paths(state: &InnerState, profile: &Profile) -> Vec<String> {
-    profile
-        .extension_ids
-        .iter()
-        .filter_map(|id| {
-            state
-                .store
-                .extensions
-                .iter()
-                .find(|item| item.id == *id && item.enabled && item.status == "ready")
-        })
-        .map(|item| item.install_path.clone())
-        .collect()
-}
-
 fn prepare_proxy(state: &mut InnerState, profile: &Profile) -> Result<Option<ProxyLaunch>, String> {
     if let Some(child) = state.proxy_processes.remove(&profile.id) {
         kill_proxy_child(child);
@@ -484,10 +472,6 @@ fn prepare_proxy(state: &mut InnerState, profile: &Profile) -> Result<Option<Pro
 
 fn kill_proxy_child(mut child: tokio::process::Child) {
     let _ = child.start_kill();
-    let _ = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .and_then(|runtime| runtime.block_on(child.wait()));
 }
 
 fn kill_proxy_launch(mut launch: ProxyLaunch) {
@@ -704,50 +688,3 @@ fn format_duration(total_seconds: i64) -> String {
     format!("{hours:02}:{minutes:02}:{seconds:02}")
 }
 
-pub fn validate_extension_manifest(path: &Path) -> Result<(String, String), String> {
-    let manifest_path = path.join("manifest.json");
-    if !manifest_path.exists() {
-        return Err("插件缺少 manifest.json".into());
-    }
-    let raw = fs::read_to_string(&manifest_path).map_err(|error| error.to_string())?;
-    let manifest: Value =
-        serde_json::from_str(&raw).map_err(|error| format!("manifest.json 无法解析: {error}"))?;
-    let name = manifest
-        .get("name")
-        .and_then(|value| value.as_str())
-        .unwrap_or("Unnamed Extension")
-        .to_string();
-    let version = manifest
-        .get("manifest_version")
-        .and_then(|value| value.as_i64())
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "unknown".into());
-    if version != "2" && version != "3" {
-        return Err(format!("不支持 manifest_version={version}"));
-    }
-    Ok((name, version))
-}
-
-pub fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
-    if target.exists() {
-        fs::remove_dir_all(target).map_err(|error| error.to_string())?;
-    }
-    ensure_dir(target)?;
-    for entry in walkdir::WalkDir::new(source) {
-        let entry = entry.map_err(|error| error.to_string())?;
-        let relative = entry
-            .path()
-            .strip_prefix(source)
-            .map_err(|error| error.to_string())?;
-        let destination = target.join(relative);
-        if entry.file_type().is_dir() {
-            ensure_dir(&destination)?;
-        } else {
-            if let Some(parent) = destination.parent() {
-                ensure_dir(parent)?;
-            }
-            fs::copy(entry.path(), &destination).map_err(|error| error.to_string())?;
-        }
-    }
-    Ok(())
-}

@@ -1,5 +1,5 @@
 use crate::models::{
-    builtin_platforms, AppSnapshot, AppStore, BrowserSession, ExtensionItem, Group, LogEntry,
+    builtin_platforms, AppSnapshot, AppStore, BrowserSession, Group, LogEntry,
     Profile, Proxy, ResultItem, RuntimeStatus, Task, TaskRun,
 };
 use chrono::Local;
@@ -20,7 +20,6 @@ pub struct InnerState {
     pub data_dir: PathBuf,
     pub store_path: PathBuf,
     pub profile_root: PathBuf,
-    pub extension_root: PathBuf,
     pub export_root: PathBuf,
     pub store: AppStore,
     pub browser_processes: HashMap<String, Child>,
@@ -40,7 +39,6 @@ impl InnerState {
             tasks: self.store.tasks.clone(),
             task_runs: self.store.task_runs.clone(),
             result_items: self.store.result_items.clone(),
-            extensions: self.store.extensions.clone(),
             site_adapters: self.store.site_adapters.clone(),
             settings: self.store.settings.clone(),
             runtime_status: self.runtime_status(),
@@ -129,19 +127,6 @@ impl InnerState {
         }
     }
 
-    pub fn upsert_extension(&mut self, extension: ExtensionItem) {
-        if let Some(existing) = self
-            .store
-            .extensions
-            .iter_mut()
-            .find(|item| item.id == extension.id)
-        {
-            *existing = extension;
-        } else {
-            self.store.extensions.insert(0, extension);
-        }
-    }
-
     pub fn upsert_session(&mut self, session: BrowserSession) {
         if let Some(existing) = self
             .store
@@ -178,11 +163,9 @@ pub fn init_state(app: &AppHandle) -> Result<AppState, String> {
         .app_data_dir()
         .map_err(|error| format!("无法解析应用数据目录: {error}"))?;
     let profile_root = data_dir.join("profiles");
-    let extension_root = data_dir.join("extensions");
     let export_root = data_dir.join("exports");
     ensure_dir(&data_dir)?;
     ensure_dir(&profile_root)?;
-    ensure_dir(&extension_root)?;
     ensure_dir(&export_root)?;
 
     let store_path = data_dir.join("store.json");
@@ -191,20 +174,17 @@ pub fn init_state(app: &AppHandle) -> Result<AppState, String> {
         serde_json::from_str::<AppStore>(&raw).unwrap_or_else(|_| {
             AppStore::new(
                 profile_root.to_string_lossy().into_owned(),
-                extension_root.to_string_lossy().into_owned(),
                 export_root.to_string_lossy().into_owned(),
             )
         })
     } else {
         AppStore::new(
             profile_root.to_string_lossy().into_owned(),
-            extension_root.to_string_lossy().into_owned(),
             export_root.to_string_lossy().into_owned(),
         )
     };
 
     store.settings.profile_storage_path = profile_root.to_string_lossy().into_owned();
-    store.settings.plugin_storage_path = extension_root.to_string_lossy().into_owned();
     store.settings.result_export_path = export_root.to_string_lossy().into_owned();
     store.browser_sessions.clear();
     normalize_store(&mut store);
@@ -223,7 +203,6 @@ pub fn init_state(app: &AppHandle) -> Result<AppState, String> {
             data_dir,
             store_path,
             profile_root,
-            extension_root,
             export_root,
             store,
             browser_processes: HashMap::new(),
@@ -312,7 +291,6 @@ fn normalize_store(store: &mut AppStore) {
         if profile.cookie.is_empty() {
             profile.cookie = cookie_status(&profile.cookie_json);
         }
-        profile.plugins = profile.extension_ids.len();
     }
     store.next_profile_number = next_profile_number;
 }

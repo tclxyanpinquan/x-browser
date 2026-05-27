@@ -80,14 +80,40 @@ pub async fn open_profile_target(
             .await?;
         }
     }
-    send(
-        &mut socket,
-        6,
-        "Page.navigate",
-        json!({ "url": target_url }),
-    )
-    .await?;
-    if target_url != "about:blank" {
+    if target_url == "about:blank" {
+        let frame_response = send(
+            &mut socket,
+            6,
+            "Page.getFrameTree",
+            json!({}),
+        )
+        .await?;
+        let frame_id = frame_response
+            .get("result")
+            .and_then(|r| r.get("frameTree"))
+            .and_then(|ft| ft.get("frame"))
+            .and_then(|f| f.get("id"))
+            .and_then(|id| id.as_str())
+            .unwrap_or("")
+            .to_string();
+        if !frame_id.is_empty() {
+            let html = build_startup_page(profile);
+            send(
+                &mut socket,
+                7,
+                "Page.setDocumentContent",
+                json!({ "frameId": frame_id, "html": html }),
+            )
+            .await?;
+        }
+    } else {
+        send(
+            &mut socket,
+            6,
+            "Page.navigate",
+            json!({ "url": target_url }),
+        )
+        .await?;
         wait_for_load(&mut socket).await?;
     }
     let _ = socket.close(None).await;
@@ -180,6 +206,133 @@ pub fn apply_fingerprint_masking_script(profile: &Profile) -> String {
 
 fn js_escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+pub fn build_startup_page(profile: &Profile) -> String {
+    let name = html_escape(&profile.name);
+    let number = profile.profile_number;
+    let group = html_escape(&profile.group);
+    let proxy = if profile.proxy.trim().is_empty() {
+        "未设置".to_string()
+    } else {
+        html_escape(&profile.proxy)
+    };
+    let timezone = html_escape(if profile.timezone.trim().is_empty() {
+        "Asia/Shanghai"
+    } else {
+        &profile.timezone
+    });
+    let locale = html_escape(if profile.locale.trim().is_empty() {
+        "zh-CN"
+    } else {
+        &profile.locale
+    });
+    let resolution = format!("{}x{}", profile.window_width, profile.window_height);
+    let account = if profile.account.trim().is_empty() {
+        if profile.login_username.trim().is_empty() {
+            "未设置".to_string()
+        } else {
+            html_escape(&profile.login_username)
+        }
+    } else {
+        html_escape(&profile.account)
+    };
+    let ua = if profile.user_agent.trim().is_empty() {
+        "浏览器默认".to_string()
+    } else {
+        html_escape(&profile.user_agent)
+    };
+    let platform_url = if profile.platform_url.trim().is_empty() {
+        "未设置".to_string()
+    } else {
+        html_escape(&profile.platform_url)
+    };
+    let note = if profile.note.trim().is_empty() {
+        "无".to_string()
+    } else {
+        html_escape(&profile.note)
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>x-browser · {name}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{
+  min-height:100vh;
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:linear-gradient(135deg,#0b0e14 0%,#111923 40%,#0d1a2a 70%,#0a0f18 100%);
+  color:#e8f0ff;
+  display:flex;align-items:center;justify-content:center;
+  padding:40px;
+}}
+.card{{
+  width:100%;max-width:680px;
+  background:rgba(16,20,28,0.92);
+  border:1px solid rgba(150,176,208,0.15);
+  border-radius:20px;
+  box-shadow:0 28px 70px rgba(0,0,0,0.46);
+  padding:40px;
+}}
+.header{{display:flex;align-items:center;gap:16px;margin-bottom:32px}}
+.logo{{
+  width:48px;height:48px;border-radius:14px;
+  background:linear-gradient(135deg,#3b82f6,#0ea5e9);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;font-weight:800;color:#fff;
+  box-shadow:0 4px 14px rgba(59,130,246,0.3);
+}}
+.title{{font-size:22px;font-weight:800;letter-spacing:-0.02em}}
+.subtitle{{color:#8fa0b5;font-size:13px;margin-top:4px}}
+.grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+.item{{
+  background:rgba(0,0,0,0.18);
+  border:1px solid rgba(150,176,208,0.1);
+  border-radius:12px;
+  padding:14px 16px;
+}}
+.item.full{{grid-column:1/-1}}
+.label{{color:#5e6c80;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px}}
+.value{{font-size:14px;font-weight:600;word-break:break-all}}
+.accent{{color:#35e6c3}}
+.footer{{margin-top:28px;text-align:center;color:#5e6c80;font-size:12px}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="logo">X</div>
+    <div>
+      <div class="title">{name}</div>
+      <div class="subtitle">Profile #{number} · {group}</div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="item"><div class="label">代理</div><div class="value">{proxy}</div></div>
+    <div class="item"><div class="label">时区</div><div class="value">{timezone}</div></div>
+    <div class="item"><div class="label">语言</div><div class="value">{locale}</div></div>
+    <div class="item"><div class="label">分辨率</div><div class="value">{resolution}</div></div>
+    <div class="item"><div class="label">账号</div><div class="value">{account}</div></div>
+    <div class="item"><div class="label">平台地址</div><div class="value accent">{platform_url}</div></div>
+    <div class="item full"><div class="label">User-Agent</div><div class="value" style="font-size:12px">{ua}</div></div>
+    <div class="item full"><div class="label">备注</div><div class="value">{note}</div></div>
+  </div>
+  <div class="footer">x-browser · 可见浏览器采集工作台 · 在地址栏输入目标网址开始工作</div>
+</div>
+</body>
+</html>"#
+    )
 }
 
 async fn create_target(port: u16) -> Result<String, String> {

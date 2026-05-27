@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -24,7 +24,6 @@ type Profile = {
   note: string;
   platformUrl: string;
   proxy: string;
-  plugins: number;
   cookie: string;
   cookieJson: string;
   locale: string;
@@ -48,7 +47,6 @@ type Profile = {
   devicePixelRatio: number;
   last: string;
   status: string;
-  extensionIds: string[];
   startUrl: string;
   userDataDir: string;
   lastError: string;
@@ -124,19 +122,6 @@ type ResultItem = {
   payload: unknown;
 };
 
-type ExtensionItem = {
-  id: string;
-  name: string;
-  kind: string;
-  sourcePath: string;
-  installPath: string;
-  manifestVersion: string;
-  status: string;
-  enabled: boolean;
-  message: string;
-  createdAt: string;
-};
-
 type SiteAdapter = {
   id: string;
   name: string;
@@ -153,7 +138,6 @@ type Settings = {
   browserMode: string;
   maxConcurrentWindows: number;
   profileStoragePath: string;
-  pluginStoragePath: string;
   resultExportPath: string;
   logLevel: string;
 };
@@ -182,7 +166,6 @@ type AppSnapshot = {
   tasks: Task[];
   taskRuns: unknown[];
   resultItems: ResultItem[];
-  extensions: ExtensionItem[];
   siteAdapters: SiteAdapter[];
   settings: Settings;
   runtimeStatus: RuntimeStatus;
@@ -230,7 +213,6 @@ type ProfileInput = {
   screenWidth: number;
   screenHeight: number;
   devicePixelRatio: number;
-  extensionIds: string[];
   startUrl: string;
 };
 
@@ -255,7 +237,6 @@ const emptySettings: Settings = {
   browserMode: "visible",
   maxConcurrentWindows: 5,
   profileStoragePath: "",
-  pluginStoragePath: "",
   resultExportPath: "",
   logLevel: "info",
 };
@@ -325,7 +306,6 @@ const emptySnapshot: AppSnapshot = {
   tasks: [],
   taskRuns: [],
   resultItems: [],
-  extensions: [],
   siteAdapters: [],
   settings: emptySettings,
   runtimeStatus: {
@@ -375,7 +355,7 @@ const navItems: Array<{ id: View; label: string; title: string; desc: string; ic
     id: "profiles",
     label: "Profile",
     title: "Profile Matrix",
-    desc: "账号、代理、Cookie、插件与用户目录管理",
+    desc: "账号、代理、Cookie 与用户目录管理",
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 7h16" />
@@ -618,7 +598,7 @@ function App() {
     try {
       await runCommand("app_snapshot", {}, "状态已刷新", { silent: true });
     } catch {
-      setSnapshot(emptySnapshot);
+      // keep current snapshot on error instead of wiping
     }
   }
 
@@ -721,6 +701,12 @@ function App() {
     });
   }
 
+  async function clearProfileCache(profile: Profile) {
+    await withBusy(`cache-${profile.id}`, () =>
+      runCommand("clear_profile_cache", { profileId: profile.id }, `已清除「${profile.name}」缓存`)
+    );
+  }
+
   function toggleProfileSelection(profileId: string, checked: boolean) {
     setSelectedProfileIds((current) => {
       if (checked) {
@@ -749,63 +735,18 @@ function App() {
   }
 
   async function startProfile(profile: Profile) {
+    setSnapshot((prev) => ({
+      ...prev,
+      profiles: prev.profiles.map((p) =>
+        p.id === profile.id ? { ...p, status: "starting" } : p
+      ),
+    }));
     await withBusy(profile.id, () => runCommand("start_profile", { profileId: profile.id }, "可见 Chromium 窗口已启动"));
     setActiveView("sessions");
   }
 
   async function stopProfile(profile: Profile) {
     await withBusy(profile.id, () => runCommand("stop_profile", { profileId: profile.id }, "浏览器进程已停止"));
-  }
-
-  async function importExtension(kind: "directory" | "crx") {
-    try {
-      const selected = await open({
-        directory: kind === "directory",
-        multiple: false,
-        filters:
-          kind === "crx"
-            ? [
-                {
-                  name: "Chrome extension",
-                  extensions: ["crx"],
-                },
-              ]
-            : undefined,
-      });
-      const source = Array.isArray(selected) ? selected[0] : selected;
-      if (!source) return;
-      await withBusy("extension", () =>
-        runCommand(
-          kind === "directory" ? "import_extension_from_directory" : "import_extension_from_crx",
-          { source },
-          kind === "directory" ? "插件目录已导入" : "CRX 插件已导入",
-        ),
-      );
-    } catch (error) {
-      setNotice({ type: "error", text: readableError(error) });
-    }
-  }
-
-  async function toggleExtension(item: ExtensionItem) {
-    await withBusy(item.id, () =>
-      runCommand(
-        "set_extension_enabled",
-        { extensionId: item.id, enabled: !item.enabled },
-        item.enabled ? "插件已停用" : "插件已启用",
-      ),
-    );
-  }
-
-  async function reimportExtension(item: ExtensionItem) {
-    await withBusy(item.id, () =>
-      runCommand("reimport_extension_item", { extensionId: item.id }, `插件「${item.name}」已重新导入`),
-    );
-  }
-
-  async function deleteExtension(item: ExtensionItem) {
-    const ok = window.confirm(`删除插件「${item.name}」？`);
-    if (!ok) return;
-    await withBusy(item.id, () => runCommand("delete_extension_item", { extensionId: item.id }, "插件已删除"));
   }
 
   async function saveTask() {
@@ -961,7 +902,6 @@ function App() {
             screenWidth: 0,
             screenHeight: 0,
             devicePixelRatio: 0,
-            extensionIds: [],
             startUrl: snapshot.platforms[0]?.url ?? "https://example.com",
           },
     );
@@ -998,7 +938,6 @@ function App() {
   const activeTasks = snapshot.tasks.filter((item) => item.status === "running").length;
   const riskCount =
     snapshot.profiles.filter((item) => item.lastError).length +
-    snapshot.extensions.filter((item) => item.status !== "ready").length +
     snapshot.tasks.filter((item) => item.status === "error").length;
   const cockpitProfile = selectedProfile ?? snapshot.profiles[0];
   const cockpitSession =
@@ -1070,7 +1009,7 @@ function App() {
             <div className="empty-state">
               <LogoMark />
               <strong>正在连接 x-browser 后端</strong>
-              <span>加载 Profile、浏览器会话、插件和任务状态。</span>
+              <span>加载 Profile、浏览器会话和任务状态。</span>
             </div>
           ) : (
             <>
@@ -1098,7 +1037,6 @@ function App() {
               {activeView === "profiles" && (
                 <ProfilesView
                   busy={busy}
-                  extensions={snapshot.extensions}
                   filter={profileFilter}
                   groupById={groupById}
                   groups={snapshot.groups}
@@ -1113,6 +1051,7 @@ function App() {
                   onDelete={deleteProfile}
                   onDeleteSelected={deleteSelectedProfiles}
                   onDuplicate={duplicateProfile}
+                  onClearCache={clearProfileCache}
                   onEdit={openProfileEditor}
                   onNew={() => openProfileEditor()}
                   onPatch={patchProfile}
@@ -1177,7 +1116,6 @@ function App() {
               {activeView === "settings" && (
                 <SettingsView
                   busy={busy}
-                  extensions={snapshot.extensions}
                   groups={snapshot.groups}
                   logs={snapshot.logs}
                   platforms={snapshot.platforms}
@@ -1186,21 +1124,16 @@ function App() {
                   runtime={snapshot.runtimeStatus}
                   settings={settingsDraft}
                   onChooseBrowser={chooseBrowserPath}
-                  onDeleteExtension={deleteExtension}
                   onDeleteGroup={deleteGroup}
                   onDeletePlatform={deletePlatform}
                   onDeleteProxy={deleteProxy}
                   onImportProxies={importProxies}
-                  onImportCrx={() => void importExtension("crx")}
-                  onImportDirectory={() => void importExtension("directory")}
-                  onReimportExtension={reimportExtension}
                   onSave={saveSettings}
                   onSaveGroup={saveGroup}
                   onSavePlatform={savePlatform}
                   onSaveProxy={saveProxy}
                   onSettingsChange={setSettingsDraft}
                   onTestProxy={testProxy}
-                  onToggleExtension={toggleExtension}
                 />
               )}
             </>
@@ -1210,7 +1143,6 @@ function App() {
 
       {profileEditor && (
         <ProfileModal
-          extensions={snapshot.extensions}
           groups={snapshot.groups}
           platforms={snapshot.platforms}
           proxies={snapshot.proxies}
@@ -1289,7 +1221,7 @@ function DashboardView({
         <Metric label="Live Sessions" value={liveCount} meta="Visible Chromium windows" />
         <Metric className="accent-green" label="Healthy Profiles" value={readyProfiles} meta="Cookie / profile ready" />
         <Metric className="accent-amber" label="Tasks Running" value={activeTasks} meta="Adapter queue active" />
-        <Metric className="accent-coral" label="Risk Events" value={riskCount} meta="Profile / plugin / task errors" />
+        <Metric className="accent-coral" label="Risk Events" value={riskCount} meta="Profile / task errors" />
       </div>
 
       <div className="cockpit">
@@ -1308,7 +1240,6 @@ function DashboardView({
               <Chip color={runtime.browserReady ? "cyan" : "coral"}>
                 {runtime.browserReady ? "Browser Ready" : "Browser Missing"}
               </Chip>
-              <Chip color="amber">{cockpitProfile?.plugins ?? 0} Plugins</Chip>
             </div>
           </div>
           <div className="browser-stage">
@@ -1338,7 +1269,7 @@ function DashboardView({
                     <div className="site-label">{running ? "Chromium running" : "Ready to launch"}</div>
                     <div className="site-title">可见浏览器采集，不再像黑盒脚本</div>
                     <div className="site-copy">
-                      每个 Profile 都是独立 Chromium 环境：Cookie、代理、插件、缓存隔离。你可以手动登录、观察页面，再让 adapter 接管采集。
+                      每个 Profile 都是独立 Chromium 环境：Cookie、代理、缓存隔离。你可以手动登录、观察页面，再让 adapter 接管采集。
                     </div>
                     <div className="hero-actions">
                       {cockpitProfile ? (
@@ -1382,7 +1313,6 @@ function DashboardView({
                 </div>
                 <div className="site-grid">
                   <MiniTile kicker="Browser context" title="Persistent profile directory" widthA={74} widthB={58} />
-                  <MiniTile kicker="Extension stack" title="CRX + unpacked support" widthA={66} widthB={42} />
                   <MiniTile kicker="Result stream" title="Structured JSON captured" widthA={86} widthB={52} />
                 </div>
                 <div className="signal-grid">
@@ -1448,7 +1378,7 @@ function DashboardView({
             </div>
             <div className="pipeline">
               <PipelineRow index="1" title="Launch profile" sub="独立 Chromium + 用户目录" status="OK" color="green" />
-              <PipelineRow index="2" title="Apply context" sub="Cookie、代理、插件注入" status="OK" color="green" />
+              <PipelineRow index="2" title="Apply context" sub="Cookie、代理注入" status="OK" color="green" />
               <PipelineRow index="3" title="Run adapter" sub="打开页面并解析结构化数据" status="Live" color="cyan" />
               <PipelineRow index="4" title="Persist result" sub="写入本地 store 并支持导出" status="Next" color="amber" />
             </div>
@@ -1493,7 +1423,6 @@ function DashboardView({
                   </div>
                   <div className="profile-meta">
                     <MetaCell label="Proxy" value={profile.proxy ? proxyType(profile.proxy) : "未设置"} />
-                    <MetaCell label="Plugins" value={String(profile.plugins)} />
                     <MetaCell label="Cookie" value={profile.cookie || "Valid"} />
                   </div>
                 </button>
@@ -1520,7 +1449,6 @@ function DashboardView({
 
 function ProfilesView({
   busy,
-  extensions,
   filter,
   groups,
   platforms,
@@ -1533,6 +1461,7 @@ function ProfilesView({
   onDelete,
   onDeleteSelected,
   onDuplicate,
+  onClearCache,
   onEdit,
   onNew,
   onPatch,
@@ -1543,7 +1472,6 @@ function ProfilesView({
   onStop,
 }: {
   busy: string;
-  extensions: ExtensionItem[];
   filter: string;
   groups: Group[];
   platforms: Platform[];
@@ -1558,6 +1486,7 @@ function ProfilesView({
   onDelete: (profile: Profile) => void;
   onDeleteSelected: () => void;
   onDuplicate: (profile: Profile) => void;
+  onClearCache: (profile: Profile) => void;
   onEdit: (profile: Profile) => void;
   onNew: () => void;
   onPatch: (profile: Profile, patch: Partial<ProfileInput>) => void;
@@ -1661,22 +1590,17 @@ function ProfilesView({
                       />
                     </td>
                     <td>
-                      <select
+                      <InlineSelect
                         value={profile.groupId || "default"}
-                        onChange={(event) => {
-                          const nextGroup = groups.find((group) => group.id === event.target.value);
+                        options={groups.map((g) => ({ value: g.id, label: g.name }))}
+                        onCommit={(val) => {
+                          const nextGroup = groups.find((g) => g.id === val);
                           void onPatch(profile, {
                             groupId: nextGroup?.id ?? "default",
                             groupName: nextGroup?.name ?? "默认",
                           });
                         }}
-                      >
-                        {groups.map((group) => (
-                          <option key={group.id} value={group.id}>
-                            {group.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </td>
                     <td>{profileProxy(profile, proxyById)}</td>
                     <td>
@@ -1711,47 +1635,21 @@ function ProfilesView({
                           <button
                             className="mini-btn primary"
                             type="button"
-                            disabled={busy === profile.id}
+                            disabled={busy === profile.id || profile.status === "starting"}
                             onClick={(event) => {
                               event.stopPropagation();
                               void onStart(profile);
                             }}
                           >
-                            启动
+                            {profile.status === "starting" ? "启动中..." : "启动"}
                           </button>
                         )}
-                        <button
-                          className="mini-btn"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onEdit(profile);
-                          }}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          className="mini-btn"
-                          type="button"
-                          disabled={busy === `duplicate-${profile.id}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void onDuplicate(profile);
-                          }}
-                        >
-                          复制
-                        </button>
-                        <button
-                          className="mini-btn danger"
-                          type="button"
-                          disabled={busy === "profile"}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void onDelete(profile);
-                          }}
-                        >
-                          删除
-                        </button>
+                        <RowMenu items={[
+                          { label: "编辑", onClick: () => onEdit(profile) },
+                          { label: "复制", onClick: () => void onDuplicate(profile) },
+                          { label: "清除缓存", onClick: () => void onClearCache(profile) },
+                          { label: "删除", danger: true, onClick: () => void onDelete(profile) },
+                        ]} />
                       </div>
                     </td>
                   </tr>
@@ -1800,16 +1698,6 @@ function ProfilesView({
                 </span>
               </div>
             </div>
-            <div className="extension-summary">
-              {selectedProfile.extensionIds.length ? (
-                selectedProfile.extensionIds.map((id) => {
-                  const item = extensions.find((extension) => extension.id === id);
-                  return item ? <Chip key={id} color={item.enabled ? "green" : "blue"}>{item.name}</Chip> : null;
-                })
-              ) : (
-                <span className="muted-text">未绑定插件</span>
-              )}
-            </div>
             {selectedProfile.lastError ? <div className="error-box">{selectedProfile.lastError}</div> : null}
             <div className="chips">
               {selectedProfile.status === "running" ? (
@@ -1817,24 +1705,23 @@ function ProfilesView({
                   停止
                 </button>
               ) : (
-                <button className="btn primary" type="button" onClick={() => void onStart(selectedProfile)}>
-                  启动 Chromium
+                <button
+                  className="btn primary"
+                  type="button"
+                  disabled={busy === selectedProfile.id || selectedProfile.status === "starting"}
+                  onClick={() => void onStart(selectedProfile)}
+                >
+                  {selectedProfile.status === "starting" ? "启动中..." : "启动 Chromium"}
                 </button>
               )}
               <button className="btn" type="button" onClick={() => onEdit(selectedProfile)}>
                 编辑
               </button>
-              <button
-                className="btn"
-                type="button"
-                disabled={busy === `duplicate-${selectedProfile.id}`}
-                onClick={() => void onDuplicate(selectedProfile)}
-              >
-                复制 Profile
-              </button>
-              <button className="btn danger" type="button" onClick={() => void onDelete(selectedProfile)}>
-                删除
-              </button>
+              <RowMenu items={[
+                { label: "复制 Profile", onClick: () => void onDuplicate(selectedProfile) },
+                { label: "清除缓存", onClick: () => void onClearCache(selectedProfile) },
+                { label: "删除", danger: true, onClick: () => void onDelete(selectedProfile) },
+              ]} />
             </div>
           </div>
         ) : (
@@ -2667,7 +2554,6 @@ function PlatformManager({
 
 function SettingsView({
   busy,
-  extensions,
   groups,
   logs,
   platforms,
@@ -2676,24 +2562,18 @@ function SettingsView({
   runtime,
   settings,
   onChooseBrowser,
-  onDeleteExtension,
   onDeleteGroup,
   onDeletePlatform,
   onDeleteProxy,
   onImportProxies,
-  onImportCrx,
-  onImportDirectory,
-  onReimportExtension,
   onSave,
   onSaveGroup,
   onSavePlatform,
   onSaveProxy,
   onSettingsChange,
   onTestProxy,
-  onToggleExtension,
 }: {
   busy: string;
-  extensions: ExtensionItem[];
   groups: Group[];
   logs: LogEntry[];
   platforms: Platform[];
@@ -2702,26 +2582,20 @@ function SettingsView({
   runtime: RuntimeStatus;
   settings: Settings;
   onChooseBrowser: () => void;
-  onDeleteExtension: (item: ExtensionItem) => void;
   onDeleteGroup: (item: Group) => void;
   onDeletePlatform: (item: Platform) => void;
   onDeleteProxy: (item: ProxyItem) => void;
   onImportProxies: (text: string) => void;
-  onImportCrx: () => void;
-  onImportDirectory: () => void;
-  onReimportExtension: (item: ExtensionItem) => void;
   onSave: () => void;
   onSaveGroup: (input: { id?: string; name: string; color: string }) => void;
   onSavePlatform: (input: { id?: string; name: string; url: string; logoPath?: string }) => void;
   onSaveProxy: (input: { id?: string; name: string; url: string; username?: string; password?: string }) => void;
   onSettingsChange: (settings: Settings) => void;
   onTestProxy: (item: ProxyItem) => void;
-  onToggleExtension: (item: ExtensionItem) => void;
 }) {
   const [settingsTab, setSettingsTab] = useState<string>("basic");
   const tabs = [
     { id: "basic", label: "基本设置" },
-    { id: "extensions", label: "插件管理" },
     { id: "groups", label: "分组管理" },
     { id: "proxies", label: "代理管理" },
     { id: "platforms", label: "平台管理" },
@@ -2748,7 +2622,7 @@ function SettingsView({
             <div className="panel-head">
               <div>
                 <div className="panel-title">System Settings</div>
-                <div className="panel-sub">运行、路径、插件和日志</div>
+                <div className="panel-sub">运行、路径和日志</div>
               </div>
               <button className="btn primary" type="button" disabled={busy === "settings"} onClick={() => void onSave()}>
                 保存设置
@@ -2792,9 +2666,6 @@ function SettingsView({
               <Field label="Profile 存储路径">
                 <input readOnly value={settings.profileStoragePath} />
               </Field>
-              <Field label="插件存储路径">
-                <input readOnly value={settings.pluginStoragePath} />
-              </Field>
               <Field label="结果导出路径">
                 <input readOnly value={settings.resultExportPath} />
               </Field>
@@ -2810,77 +2681,6 @@ function SettingsView({
                 </select>
               </Field>
             </div>
-          </section>
-        )}
-
-        {settingsTab === "extensions" && (
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <div className="panel-title">Extension Manager</div>
-                <div className="panel-sub">本地 unpacked extension 和 .crx 插件</div>
-              </div>
-              <div className="chips">
-                <button className="btn" type="button" onClick={() => void onImportDirectory()}>
-                  导入目录
-                </button>
-                <button className="btn primary" type="button" onClick={() => void onImportCrx()}>
-                  导入 CRX
-                </button>
-              </div>
-            </div>
-            {extensions.length ? (
-              <table>
-                <thead>
-                  <tr>
-                    <th>插件</th>
-                    <th>类型</th>
-                    <th>Manifest</th>
-                    <th>状态</th>
-                    <th>路径</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {extensions.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.name}</td>
-                      <td>{item.kind}</td>
-                      <td>v{item.manifestVersion}</td>
-                      <td>
-                        <StatusChip status={item.enabled ? item.status : "stopped"} />
-                      </td>
-                      <td>{item.installPath}</td>
-                      <td>
-                        <div className="row-actions">
-                          <button
-                            className="mini-btn primary"
-                            type="button"
-                            disabled={busy === item.id}
-                            onClick={() => void onReimportExtension(item)}
-                          >
-                            重新导入
-                          </button>
-                          <button
-                            className="mini-btn"
-                            type="button"
-                            disabled={busy === item.id}
-                            onClick={() => void onToggleExtension(item)}
-                          >
-                            {item.enabled ? "停用" : "启用"}
-                          </button>
-                          <button className="mini-btn danger" type="button" onClick={() => void onDeleteExtension(item)}>
-                            删除
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <EmptyPanel title="还没有插件" text="导入本地插件目录，或导入 .crx 文件解包后加载到 Profile。" />
-            )}
           </section>
         )}
 
@@ -2960,7 +2760,6 @@ function SettingsView({
 
 function ProfileModal({
   busy,
-  extensions,
   groups,
   platforms,
   proxies,
@@ -2970,7 +2769,6 @@ function ProfileModal({
   onSave,
 }: {
   busy: boolean;
-  extensions: ExtensionItem[];
   groups: Group[];
   platforms: Platform[];
   proxies: ProxyItem[];
@@ -3308,30 +3106,6 @@ function ProfileModal({
             </FormRow>
           </FormSection>
 
-          <FormSection title="插件设置">
-            <div className="checkbox-grid profile-checks">
-              {extensions.length ? (
-                extensions.map((item) => (
-                  <label className="check-row" key={item.id}>
-                    <input
-                      type="checkbox"
-                      checked={value.extensionIds.includes(item.id)}
-                      onChange={(event) => {
-                        const extensionIds = event.target.checked
-                          ? [...value.extensionIds, item.id]
-                          : value.extensionIds.filter((id) => id !== item.id);
-                        onChange({ ...value, extensionIds });
-                      }}
-                    />
-                    <span>{item.name}</span>
-                    <small>{item.kind}</small>
-                  </label>
-                ))
-              ) : (
-                <span className="muted-text">还没有导入插件，可在设置页导入。</span>
-              )}
-            </div>
-          </FormSection>
         </div>
         <div className="modal-foot" style={{ justifyContent: "space-between" }}>
           <button
@@ -3587,21 +3361,134 @@ function InlineText({
   onCommit: (value: string) => void;
   placeholder?: string;
 }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => setDraft(value), [value]);
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className="inline-input"
+        placeholder={placeholder}
+        value={draft}
+        onClick={(e) => e.stopPropagation()}
+        onBlur={() => {
+          onCommit(draft);
+          setEditing(false);
+        }}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") { setDraft(value); setEditing(false); }
+        }}
+      />
+    );
+  }
+
   return (
-    <input
-      className="table-inline"
-      placeholder={placeholder}
-      value={draft}
-      onBlur={() => onCommit(draft)}
-      onChange={(event) => setDraft(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.currentTarget.blur();
-        }
-      }}
-    />
+    <span className="inline-cell" onClick={(e) => e.stopPropagation()}>
+      <span className="cell-text">{value || placeholder || ""}</span>
+      <svg className="edit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" onClick={() => setEditing(true)}>
+        <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      </svg>
+    </span>
+  );
+}
+
+function InlineSelect({
+  value,
+  options,
+  onCommit,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onCommit: (value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const selectRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (editing) selectRef.current?.focus();
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <select
+        ref={selectRef}
+        className="inline-input"
+        value={value}
+        onClick={(e) => e.stopPropagation()}
+        onBlur={() => setEditing(false)}
+        onChange={(e) => {
+          onCommit(e.target.value);
+          setEditing(false);
+        }}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    );
+  }
+  const display = options.find((o) => o.value === value)?.label || value;
+  return (
+    <span className="inline-cell" onClick={(e) => e.stopPropagation()}>
+      <span className="cell-text">{display}</span>
+      <svg className="edit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" onClick={() => setEditing(true)}>
+        <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      </svg>
+    </span>
+  );
+}
+
+function RowMenu({
+  items,
+}: {
+  items: { label: string; danger?: boolean; onClick: () => void }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  function toggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.right });
+    }
+    setOpen(!open);
+  }
+
+  return (
+    <div className="row-menu" ref={ref}>
+      <button ref={triggerRef} className="mini-btn row-menu-trigger" type="button" onClick={toggle}>⋮</button>
+      {open && (
+        <div className="row-menu-dropdown" style={{ top: pos.top, right: window.innerWidth - pos.left }}>
+          {items.map((item) => (
+            <button
+              key={item.label}
+              className={`row-menu-item${item.danger ? " danger" : ""}`}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); item.onClick(); setOpen(false); }}
+            >{item.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -3612,7 +3499,7 @@ function StatusChip({ status }: { status: string }) {
       ? "green"
       : normalized === "error" || normalized === "failed"
         ? "coral"
-        : normalized === "waiting"
+        : normalized === "waiting" || normalized === "starting"
           ? "amber"
           : "blue";
   return <Chip color={color}>{statusLabel(status)}</Chip>;
@@ -3863,7 +3750,6 @@ function profileToInput(profile: Profile): ProfileInput {
     screenWidth: profile.screenWidth || 0,
     screenHeight: profile.screenHeight || 0,
     devicePixelRatio: profile.devicePixelRatio || 0,
-    extensionIds: profile.extensionIds,
     startUrl: profile.startUrl,
     cookie: profile.cookie || "",
   };
@@ -3896,6 +3782,7 @@ function statusLabel(status: string) {
   const normalized = status.toLowerCase();
   if (normalized === "running") return "Running";
   if (normalized === "stopped") return "Stopped";
+  if (normalized === "starting") return "启动中...";
   if (normalized === "waiting") return "Waiting";
   if (normalized === "done") return "Done";
   if (normalized === "ready") return "Ready";

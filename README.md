@@ -29,6 +29,11 @@
 
 ### 从源码开发
 
+### 重建：
+
+rm -rf src-tauri/target dist
+npm run tauri dev
+
 ```bash
 # 前置条件：Node.js 18+, Rust 1.70+
 npm install

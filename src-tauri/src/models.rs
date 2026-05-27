@@ -33,8 +33,6 @@ pub struct Profile {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub proxy: String,
     #[serde(default)]
-    pub plugins: usize,
-    #[serde(default)]
     pub cookie: String,
     #[serde(default)]
     pub cookie_json: String,
@@ -80,8 +78,6 @@ pub struct Profile {
     pub last: String,
     #[serde(default)]
     pub status: String,
-    #[serde(default)]
-    pub extension_ids: Vec<String>,
     #[serde(default)]
     pub start_url: String,
     #[serde(default)]
@@ -172,7 +168,6 @@ pub struct ProfileInput {
     #[serde(default)]
     pub device_pixel_ratio: f64,
     #[serde(default)]
-    pub extension_ids: Vec<String>,
     pub start_url: String,
 }
 
@@ -321,21 +316,6 @@ pub struct ResultItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExtensionItem {
-    pub id: String,
-    pub name: String,
-    pub kind: String,
-    pub source_path: String,
-    pub install_path: String,
-    pub manifest_version: String,
-    pub status: String,
-    pub enabled: bool,
-    pub message: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SiteAdapter {
     pub id: String,
     pub name: String,
@@ -354,7 +334,6 @@ pub struct Settings {
     pub browser_mode: String,
     pub max_concurrent_windows: u8,
     pub profile_storage_path: String,
-    pub plugin_storage_path: String,
     pub result_export_path: String,
     pub log_level: String,
 }
@@ -400,8 +379,6 @@ pub struct AppStore {
     #[serde(default)]
     pub result_items: Vec<ResultItem>,
     #[serde(default)]
-    pub extensions: Vec<ExtensionItem>,
-    #[serde(default)]
     pub site_adapters: Vec<SiteAdapter>,
     #[serde(default)]
     pub settings: Settings,
@@ -420,7 +397,6 @@ pub struct AppSnapshot {
     pub tasks: Vec<Task>,
     pub task_runs: Vec<TaskRun>,
     pub result_items: Vec<ResultItem>,
-    pub extensions: Vec<ExtensionItem>,
     pub site_adapters: Vec<SiteAdapter>,
     pub settings: Settings,
     pub runtime_status: RuntimeStatus,
@@ -454,7 +430,7 @@ pub fn default_window_height() -> u32 {
 }
 
 impl AppStore {
-    pub fn new(profile_root: String, extension_root: String, export_root: String) -> Self {
+    pub fn new(profile_root: String, export_root: String) -> Self {
         Self {
             groups: vec![Group {
                 id: "default".into(),
@@ -470,7 +446,6 @@ impl AppStore {
             tasks: Vec::new(),
             task_runs: Vec::new(),
             result_items: Vec::new(),
-            extensions: Vec::new(),
             site_adapters: vec![SiteAdapter {
                 id: "generic.page_snapshot".into(),
                 name: "Generic Page Snapshot".into(),
@@ -486,7 +461,6 @@ impl AppStore {
                 browser_mode: "visible".into(),
                 max_concurrent_windows: 5,
                 profile_storage_path: profile_root,
-                plugin_storage_path: extension_root,
                 result_export_path: export_root,
                 log_level: "info".into(),
             },

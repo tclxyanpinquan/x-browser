@@ -1289,7 +1289,108 @@ tbody tr.row-selected {
 .row-actions {
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.inline-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.inline-cell .edit-icon {
+  opacity: 0;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: opacity 150ms;
+}
+
+.inline-cell:hover .edit-icon {
+  opacity: 1;
+}
+
+.inline-cell .cell-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-input {
+  width: 100%;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: var(--bg);
+  outline: none;
+}
+
+.row-menu {
+  position: relative;
+}
+
+.row-menu-trigger {
+  min-height: 30px;
+  width: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  transition: all 150ms ease;
+}
+
+.chips .row-menu-trigger {
+  min-height: 40px;
+  width: 40px;
+  border-radius: 12px;
+}
+
+.row-menu-trigger:hover {
+  border-color: var(--dim);
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.row-menu-dropdown {
+  position: fixed;
+  z-index: 9999;
+  min-width: 130px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+}
+
+.row-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.row-menu-item:hover {
+  background: var(--panel-soft);
+}
+
+.row-menu-item.danger {
+  color: var(--coral);
 }
 
 .select-col {
