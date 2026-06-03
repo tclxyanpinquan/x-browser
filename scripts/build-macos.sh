@@ -48,11 +48,20 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Build (Tauri reads APPLE_* env vars automatically for notarization)
+
 npm run tauri build -- --target "$TARGET_TRIPLE"
 
-# Locate the produced app
-APP_PATH="src-tauri/target/release/bundle/macos/x-browser.app"
-DMG_PATH="src-tauri/target/release/bundle/dmg/x-browser_1.2.0_${DMG_ARCH_TAG}.dmg"
+# Locate the produced app. With --target, Tauri drops the bundle under
+# target/<triple>/release/bundle; without it, under target/release/bundle.
+# We try the targeted path first, then fall back to the default path.
+APP_PATH="src-tauri/target/${TARGET_TRIPLE}/release/bundle/macos/x-browser.app"
+if [ ! -d "$APP_PATH" ]; then
+  APP_PATH="src-tauri/target/release/bundle/macos/x-browser.app"
+fi
+DMG_PATH=$(ls -1 src-tauri/target/${TARGET_TRIPLE}/release/bundle/dmg/*.dmg 2>/dev/null | head -1)
+if [ -z "$DMG_PATH" ] || [ ! -f "$DMG_PATH" ]; then
+  DMG_PATH=$(ls -1 src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1)
+fi
 
 if [ ! -d "$APP_PATH" ]; then
   echo "ERROR: $APP_PATH not found" >&2
