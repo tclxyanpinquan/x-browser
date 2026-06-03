@@ -40,10 +40,6 @@
       "entitlements": "entitlements.plist",
       "providerShortName": "2VH263HBZJ",
       "signingIdentity": "Developer ID Application: yuchen xiu (2VH263HBZJ)",
-      "signing": {
-        "entitlements": "entitlements.plist",
-        "exceptionDomain": ""
-      },
       "dmg": {
         "background": null,
         "windowSize": {
