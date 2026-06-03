@@ -3,6 +3,74 @@
 ## 一次性准备（已完成）
 
 - [x] Apple Developer 账号付费（`hysen.yan@outlook.com` / `yuchen xiu`）
+- [x] Developer ID Application 证书在 developer.apple.com 后台（Team ID: `2VH263HBZJ`，2027/02/02 到期）
+- [x] `.cer` 已下载到 `~/Downloads/developerID_application.cer`（用 Chrome 登录后台后点 Download）
+- [ ] **把 `.cer` 装进钥匙串**（见下方「首次安装证书」）
+- [ ] App-Specific Password 存到 shell 环境变量
+- [x] Bundle ID 改为 `com.xbrowser.app`
+- [x] 签名/公证配置写入 `src-tauri/tauri.conf.json`
+- [x] `src-tauri/entitlements.plist` 已创建
+- [x] `scripts/build-macos.sh` 支持 aarch64 / x86_64
+- [x] `scripts/install-cert-macos.sh` 一次性安装 + 构建
+- [x] CI workflow: `.github/workflows/release-macos.yml`
+
+## 首次安装证书
+
+在 Codex 的沙盒里既碰不到钥匙串也启动不了 Finder UI，这两步必须**在你自己的 Terminal**里跑。
+已经在自己的工作环境里跑过、钥匙串里已经有配对私钥的，可以直接跳到「打包」。
+
+```bash
+cd /Users/yanpinquan/software/cloatbrower/.worktrees/feat-macos-distribution
+chmod +x scripts/install-cert-macos.sh
+./scripts/install-cert-macos.sh
+```
+
+脚本会按顺序做四件事（每一步都会打印）：
+
+1. 解锁 login 钥匙串（要你输 macOS 开机密码）
+2. 把 `~/Downloads/developerID_application.cer` 导入到钥匙串，授权 `codesign` 和 `security` 工具免密访问
+3. 跑 `security find-identity -p codesigning -v` 验证 identity 出现
+4. 检查 `APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID` 三个环境变量在当前 shell 里有没有
+
+如果第 3 步报「identity 仍然不在钥匙串」，说明这张 `.cer` 是在别的机器上签发的，
+**私钥不在本机**。两条路：
+
+```bash
+# (a) 从原机器导出 .p12（需要原机器的 cert + 私钥）
+security export -k ~/Library/Keychains/login.keychain-db -t identities \
+  -f pkcs12 -o ~/Desktop/x-browser-devid.p12 -P "<p12-password>"
+scp ~/Desktop/x-browser-devid.p12 this-mac:~/Downloads/
+# 然后在本机：
+security import ~/Downloads/x-browser-devid.p12 -k ~/Library/Keychains/login.keychain-db \
+  -T /usr/bin/codesign -T /usr/bin/security -P "<p12-password>"
+
+# (b) 在 developer.apple.com 把这张 Developer ID Application 撤销，
+#     然后在本机生成新 CSR（Keychain Access → Certificate Assistant →
+#     Request a Certificate From a Certificate Authority…），上传到后台，
+#     下载新的 .cer，再跑 install-cert-macos.sh
+```
+
+## 打包
+
+证书就位后，**还是在你自己的 Terminal**里（Codex 沙盒里 `security`/`xcrun` 全部被卡）：
+
+```bash
+cd /Users/yanpinquan/software/cloatbrower/.worktrees/feat-macos-distribution
+./scripts/build-macos.sh
+```
+
+脚本会跑：
+1. `npm run tauri build -- --target aarch64-apple-darwin`（或 x86_64，取决于你机器）
+2. `codesign --verify --deep --strict`
+3. `spctl --assess --type execute`（检查 Gatekeeper）
+4. `stapler validate`（检查公证票据）
+5. `xcrun notarytool history` 拉最近 5 条 submission
+
+产物在 `src-tauri/target/release/bundle/`：
+- `macos/x-browser.app` —— 装好的应用
+- `dmg/x-browser_1.2.0_<arch>.dmg` —— 分发用的 DMG
+
+- [x] Apple Developer 账号付费（`hysen.yan@outlook.com` / `yuchen xiu`）
 - [x] Developer ID Application 证书已在钥匙串中（Team ID: `2VH263HBZJ`）
 - [ ] App-Specific Password 存到 shell 环境变量
 - [x] Bundle ID 改为 `com.xbrowser.app`
